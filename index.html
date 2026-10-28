@@ -97,10 +97,12 @@
   }
   .seg:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .ticks {
-    display: flex; justify-content: space-between; margin-top: 6px;
+    position: relative; height: 1.3em; margin-top: 6px;
     font-family: var(--font-mono); font-size: .72rem; color: var(--muted);
     font-variant-numeric: tabular-nums;
   }
+  .ticks span { position: absolute; top: 0; transform: translateX(-50%); }
+  .ticks span:first-child { transform: none; }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: .85rem; color: var(--muted); }
   .legend span { display: inline-flex; align-items: center; gap: 7px; }
   .sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--line); background: var(--zone); }
@@ -228,7 +230,7 @@
     <div>
       <p class="eyebrow">Erklärvideo · Drehbuch</p>
       <h1>Antibiotika – Wunderwaffe mit <em>Ablaufdatum?</em></h1>
-      <p class="lede">Skript und Szenenplan für drei Sprecher. Ca. 4 Minuten, 6 Szenen, rund 550 gesprochene Wörter.</p>
+      <p class="lede">Skript und Szenenplan für drei Sprecher. Ca. 4¼ Minuten, 6 Szenen, rund 560 gesprochene Wörter.</p>
     </div>
     <svg class="dish" viewBox="0 0 160 160" role="img" aria-label="Petrischale mit Schimmelpilz und bakterienfreier Hemmzone">
       <circle cx="80" cy="80" r="76" fill="var(--surface)" stroke="var(--line)" stroke-width="3"/>
@@ -255,10 +257,10 @@
       <a class="seg" href="#s2" style="flex:55" title="Szene 2 – Geschichte, 0:20–1:15">2</a>
       <a class="seg" href="#s3" style="flex:55" title="Szene 3 – Wirkung, 1:15–2:10">3</a>
       <a class="seg" href="#s4" style="flex:50" title="Szene 4 – Resistenzen, 2:10–3:00">4</a>
-      <a class="seg" href="#s5" style="flex:45" title="Szene 5 – Nebenwirkungen, 3:00–3:45">5</a>
-      <a class="seg cam" href="#s6" style="flex:15" title="Szene 6 – Outro, 3:45–4:00">6</a>
+      <a class="seg" href="#s5" style="flex:60" title="Szene 5 – Nebenwirkungen &amp; Tierhaltung, 3:00–4:00">5</a>
+      <a class="seg cam" href="#s6" style="flex:15" title="Szene 6 – Outro, 4:00–4:15">6</a>
     </div>
-    <div class="ticks"><span>0:00</span><span>1:00</span><span>2:00</span><span>3:00</span><span>4:00</span></div>
+    <div class="ticks"><span style="left:0">0:00</span><span style="left:23.53%">1:00</span><span style="left:47.06%">2:00</span><span style="left:70.59%">3:00</span><span style="left:94.12%">4:00</span></div>
     <div class="legend">
       <span><i class="sw cam"></i>Kamera (ihr im Bild)</span>
       <span><i class="sw"></i>Stimme + Animation</span>
@@ -288,8 +290,8 @@
             <tr><td>2</td><td>Was sind Antibiotika + Geschichte</td><td class="tc">0:20–1:15</td><td><span class="tag">Animation</span></td><td><span class="dots"><i class="dot A">A</i></span></td></tr>
             <tr><td>3</td><td>Wirkmechanismen</td><td class="tc">1:15–2:10</td><td><span class="tag">Animation</span></td><td><span class="dots"><i class="dot B">B</i></span></td></tr>
             <tr><td>4</td><td>Resistenzen</td><td class="tc">2:10–3:00</td><td><span class="tag">Animation</span></td><td><span class="dots"><i class="dot C">C</i></span></td></tr>
-            <tr><td>5</td><td>Nebenwirkungen &amp; Tierhaltung</td><td class="tc">3:00–3:45</td><td><span class="tag">Animation</span></td><td><span class="dots"><i class="dot A">A</i><i class="dot C">C</i></span></td></tr>
-            <tr><td>6</td><td>Outro</td><td class="tc">3:45–4:00</td><td><span class="tag cam">Kamera</span></td><td><span class="dots"><i class="dot A">A</i><i class="dot B">B</i><i class="dot C">C</i></span></td></tr>
+            <tr><td>5</td><td>Nebenwirkungen &amp; Tierhaltung</td><td class="tc">3:00–4:00</td><td><span class="tag">Animation</span></td><td><span class="dots"><i class="dot A">A</i><i class="dot C">C</i></span></td></tr>
+            <tr><td>6</td><td>Outro</td><td class="tc">4:00–4:15</td><td><span class="tag cam">Kamera</span></td><td><span class="dots"><i class="dot A">A</i><i class="dot B">B</i><i class="dot C">C</i></span></td></tr>
           </tbody>
         </table>
       </div>
@@ -327,7 +329,7 @@
       <div class="shot"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="4" width="16" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 8l5 2-5 2z" fill="currentColor"/></svg><div><b>Bild</b>Wort „Anti-bios“ erscheint, zerfällt in „anti = gegen“ und „bios = Leben“</div></div>
       <div class="row A"><span class="who">A</span><p>Das Wort Antibiotikum kommt aus dem Griechischen: „anti“ heißt gegen, „bios“ heißt Leben. Gemeint sind Stoffe, die Bakterien am Wachsen hindern oder sie abtöten. Ursprünglich stammen sie von Pilzen oder Bakterien selbst, heute werden viele auch künstlich hergestellt. Wichtig: Gegen Viren, also zum Beispiel gegen Grippe oder Corona, helfen sie nicht.</p></div>
       <div class="shot"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="4" width="16" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 8l5 2-5 2z" fill="currentColor"/></svg><div><b>Bild</b>Zeitstrahl läuft von links nach rechts, Stationen ploppen auf: 1897 · 1910 · 1928 · 1941</div></div>
-      <div class="row A"><span class="who">A</span><p>Schon 1897 beobachtete der französische Arzt Ernest Duchesne, dass Schimmelpilze Bakterien töten können. Doch niemand interessierte sich dafür. 1910 brachte Paul Ehrlich das erste Mittel gegen die Syphilis auf den Markt: Salvarsan.</p></div>
+      <div class="row A"><span class="who">A</span><p>Schon 1897 beschrieb der junge französische Militärarzt Ernest Duchesne in seiner Doktorarbeit, dass Schimmelpilze Bakterien töten können. Doch niemand interessierte sich dafür. 1910 brachte Paul Ehrlich das erste wirksame und relativ ungefährliche Mittel gegen die Syphilis auf den Markt: Salvarsan.</p></div>
       <div class="shot"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="4" width="16" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 8l5 2-5 2z" fill="currentColor"/></svg><div><b>Bild</b>Petrischale: Schimmelfleck, drumherum verschwinden die Bakterien-Punkte</div></div>
       <div class="row A"><span class="who">A</span><p>Der große Durchbruch kam 1928 durch Zufall. Alexander Fleming ließ eine Bakterienkultur stehen, und darauf wuchs ein Schimmelpilz. Rund um den Pilz wuchsen keine Bakterien mehr. Den Stoff nannte er Penicillin. Ab 1941 wurden damit die ersten Patienten behandelt, und 1945 bekam Fleming dafür den Nobelpreis.</p></div>
     </div>
@@ -371,7 +373,7 @@
 
   <section class="block" id="s5">
     <div class="block-head">
-      <span class="num">Szene 5 · 3:00–3:45</span>
+      <span class="num">Szene 5 · 3:00–4:00</span>
       <h2>Nebenwirkungen &amp; Tierhaltung</h2>
       <div class="tags"><span class="tag">Stimme + Animation</span><span class="tag">A + C</span></div>
     </div>
@@ -380,12 +382,14 @@
       <div class="row A"><span class="who">A</span><p>Antibiotika sind meistens gut verträglich. Aber sie unterscheiden nicht zwischen bösen und guten Bakterien. Deshalb stören sie oft unsere Darmflora, was zu Durchfall führen kann. Manche Menschen reagieren auch allergisch.</p></div>
       <div class="shot"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="4" width="16" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 8l5 2-5 2z" fill="currentColor"/></svg><div><b>Bild</b>Stall-Illustration, Pfeil vom Stall über Gülle und Wasser zum Menschen</div></div>
       <div class="row C"><span class="who">C</span><p>Ein großer Teil der Antibiotika wird gar nicht an Menschen gegeben, sondern an Tiere. In den USA bekommen Nutztiere etwa viermal so viel Antibiotika wie Menschen. Resistente Keime gelangen dann über Gülle, Wasser und Fleisch zurück zu uns. In der EU ist es deshalb seit 2006 verboten, Tieren Antibiotika nur zum schnelleren Wachsen zu geben.</p></div>
+      <div class="shot"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="4" width="16" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 8l5 2-5 2z" fill="currentColor"/></svg><div><b>Bild</b>Weltkarte: Pfeil von Brasilien nach Europa, darauf ein Stopp-Schild, Einblendung „Importstopp ab 3. 9. 2026“</div></div>
+      <div class="row C"><span class="who">C</span><p>Wie ernst das genommen wird, zeigt ein aktuelles Beispiel: Im September 2026 haben die EU und die Schweiz die Einfuhr von Rindfleisch und Geflügel aus Brasilien gestoppt. Brasilien konnte nicht ausreichend nachweisen, dass es sich an die europäischen Regeln für Antibiotika in der Tierhaltung hält.</p></div>
     </div>
   </section>
 
   <section class="block" id="s6">
     <div class="block-head">
-      <span class="num">Szene 6 · 3:45–4:00</span>
+      <span class="num">Szene 6 · 4:00–4:15</span>
       <h2>Outro</h2>
       <div class="tags"><span class="tag cam">Kamera</span><span class="tag">A + B + C</span></div>
     </div>
