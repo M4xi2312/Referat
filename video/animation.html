@@ -358,7 +358,8 @@ const SCENES = [
   build(root, S) {
     const cam = G(root), setWho = camPlaceholder(cam, "Szene 1 · ihr drei im Bild");
     const names = G(root);
-    const nameList = window.TIMING ? window.TIMING.names : ["Name A", "Name B", "Name C"];
+    // Mit echten Aufnahmen kommen die Namen als eigene Ebene über das Kameravideo (names_png.mjs)
+    const nameList = window.TIMING ? [] : ["Name A", "Name B", "Name C"];
     (nameList || []).forEach((nm, i) => { const w = "ABC"[i]; const n = chip(names, nm, { size: 36, stroke: WHO[w][0] }); place(n, 660 + i * 300, 0); });
     const title = G(root);
     E("rect", { width: 1920, height: 1080, fill: C.bg }, title);
@@ -1032,6 +1033,15 @@ function renderAt(T0) {
   hudR.textContent = `Szene ${SCENES.indexOf(cur) + 1} · ${cur.title} · ${fmtTime(t)}`;
 }
 window.DURATION = DURATION;
+// Nur die Namensschilder auf transparentem Hintergrund, für die Einblendung über dem Intro-Video
+window.renderNames = () => {
+  const nm = window.TIMING.names;
+  document.getElementById("stage").style.background = "transparent";
+  document.documentElement.style.background = document.body.style.background = "transparent";
+  document.querySelectorAll(".hud, #sub").forEach(e => e.remove());
+  svg.innerHTML = "";
+  nm.names.forEach((n, i) => { const g = chip(svg, n, { size: 46, stroke: WHO["ABC"[i]][0] }); place(g, nm.x[i], 975); });
+};
 window.renderAt = renderAt;
 window.ready = document.fonts.ready.then(() => document.fonts.load('800 40px "Bricolage Grotesque"')).then(() => { build(); renderAt(0); return DURATION; });
 

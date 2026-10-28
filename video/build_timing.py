@@ -24,10 +24,12 @@ PLAN = [
     {"lead": 1.2, "tail": 1.0, "lines": [["szene2_A1.m4a"], ["szene2_A2.m4a"], ["szene2_A3.m4a"]]},
     {"lead": 1.0, "tail": 1.0, "lines": [["szene3_B1.m4a"], ["szene3_B2.m4a"], ["szene3_B3.m4a"], ["szene3_B4.m4a"], ["szene3_B5.m4a"]]},
     {"lead": 1.0, "tail": 1.0, "lines": [["szene4_C1.m4a"], ["szene4_C2.m4a"], ["szene4_C3.m4a"]]},
-    {"lead": 1.0, "tail": 1.2, "lines": [["szene5_A1.m4a"], ["szene5_C1a.m4a", "szene5_C1b.m4a"], None]},
+    {"lead": 1.0, "tail": 1.2, "lines": [["szene5_A1.m4a"], ["szene5_C1a.m4a", "szene5_C1b.m4a"], ["szene5_C2.m4a"]]},
     {"lead": 0.0, "tail": 4.5, "cam": [{"src": "szene6_outro.mov", "lines": [0, 1]}, {"src": "szene6_danke.mov", "lines": [2]}]},
 ]
-CREDITS = ["Quelle: Wikipedia, Artikel „Antibiotikum“"]
+NAMES = ["Jojo", "Maxi", "Maximilian"]  # von links nach rechts im Bild
+NAME_X = [420, 1000, 1560]  # wo die drei im Intro-Video stehen (Bildmitte der Person, bei 1920 px Breite)
+CREDITS = [" · ".join(NAMES), "Quelle: Wikipedia, Artikel „Antibiotikum“"]
 
 
 def script_lines():
@@ -143,7 +145,9 @@ def main():
         dur = round(t + plan["tail"], 3)
         scenes.append({"dur": dur, "lead": plan["lead"], "tail": plan["tail"], "lines": lines})
         start += dur
-    data = {"duration": round(start, 3), "scenes": scenes, "audio": audio, "video": video, "credits": CREDITS, "names": None}
+    intro = video[0]
+    names = {"names": NAMES, "x": NAME_X, "from": round(intro["at"] + 1.0, 3), "to": round(intro["at"] + intro["out"] - intro["in"] - 0.2, 3)}
+    data = {"duration": round(start, 3), "scenes": scenes, "audio": audio, "video": video, "credits": CREDITS, "names": names}
     (HERE / "timing.js").write_text("// Erzeugt von build_timing.py – nicht von Hand ändern.\nwindow.TIMING = "
                                     + json.dumps(data, ensure_ascii=False, indent=1) + ";\n", encoding="utf-8")
     print(f"timing.js geschrieben: {start:.1f} s")
