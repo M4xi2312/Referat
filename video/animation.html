@@ -56,6 +56,8 @@
   <span id="time">0:00</span>
 </div>
 
+<!-- Echte Satzzeiten aus den Aufnahmen (build_timing.py). Fehlt die Datei, werden sie aus der Wortzahl geschätzt. -->
+<script src="timing.js"></script>
 <script>
 "use strict";
 /* ------------------------------------------------------------------ Grundlagen */
@@ -316,7 +318,8 @@ function petri(parent, R, seed) {
 }
 // Platzhalter für Szenen, die ihr selbst filmt
 function camPlaceholder(parent, note) {
-  const g = G(parent);
+  // Mit echten Aufnahmen liegt das Kameravideo darüber; der Platzhalter darf dann nicht durchblitzen
+  const g = G(parent, window.TIMING ? { opacity: 0 } : {});
   E("rect", { width: 1920, height: 1080, fill: C.cam }, g);
   E("rect", { x: 40, y: 40, width: 1840, height: 1000, rx: 28, fill: "none", stroke: C.accent, "stroke-width": 4, "stroke-dasharray": "18 14", opacity: .7 }, g);
   const icon = G(g); camIcon(icon, 1.6); place(icon, 960, 250);
@@ -355,7 +358,9 @@ const SCENES = [
   build(root, S) {
     const cam = G(root), setWho = camPlaceholder(cam, "Szene 1 · ihr drei im Bild");
     const names = G(root);
-    ["A", "B", "C"].forEach((w, i) => { const n = chip(names, "Name " + w, { size: 36, stroke: WHO[w][0] }); place(n, 660 + i * 300, 0); });
+    // Mit echten Aufnahmen kommen die Namen als eigene Ebene über das Kameravideo (names_png.mjs)
+    const nameList = window.TIMING ? [] : ["Name A", "Name B", "Name C"];
+    (nameList || []).forEach((nm, i) => { const w = "ABC"[i]; const n = chip(names, nm, { size: 36, stroke: WHO[w][0] }); place(n, 660 + i * 300, 0); });
     const title = G(root);
     E("rect", { width: 1920, height: 1080, fill: C.bg }, title);
     const dishG = G(title), dish = petri(dishG, 250, 7);
@@ -678,7 +683,7 @@ const SCENES = [
       pop(noDiv, t, s(3, 2).t0 + .2, 1340, 800);
       // Vergleich
       // Zeile 4 hat zwei Sätze; „Bakteriostatisch …“ beginnt nach dem Doppelpunkt, etwa bei 45 % des ersten Satzes
-      const stat = { t0: lerp(s(4, 0).t0, s(4, 0).t1, .45) }, cid = s(4, 1);
+      const stat = { t0: S.wordAt(4, /^bakteriostatisch/i) ?? lerp(s(4, 0).t0, s(4, 0).t1, .45) }, cid = s(4, 1);
       const s4 = i => [null, stat, cid][i];
       panels.forEach((p, i) => {
         const hi = i === 0 ? vis(t, s4(1).t0, s4(2).t0 + .2) : P(t, s4(2).t0, .4);
@@ -950,9 +955,8 @@ const SCENES = [
     E("rect", { width: 1920, height: 1080, fill: C.bg }, cr);
     const dG = G(cr), dish = petri(dG, 120, 7);
     T(cr, 960, 470, "Antibiotika – Wunderwaffe mit Ablaufdatum?", { anchor: "middle", size: 64, weight: 800, font: F.display });
-    T(cr, 960, 580, "Sprecher: Name A · Name B · Name C", { anchor: "middle", size: 42 });
-    T(cr, 960, 646, "Klasse: …", { anchor: "middle", size: 42 });
-    T(cr, 960, 760, "Quelle: Wikipedia, Artikel „Antibiotikum“", { anchor: "middle", size: 34, fill: C.muted });
+    const credits = window.TIMING ? window.TIMING.credits : ["Sprecher: Name A · Name B · Name C", "Klasse: …", "Quelle: Wikipedia, Artikel „Antibiotikum“"];
+    credits.forEach((c, i) => T(cr, 960, 590 + i * 66, c, { anchor: "middle", size: /^Quelle/.test(c) ? 34 : 42, fill: /^Quelle/.test(c) ? C.muted : C.ink }));
     return t => {
       setWho(S.whoAt(t));
       const ct = S.dur - S.tail + .3;
@@ -967,8 +971,11 @@ const SCENES = [
 /* ------------------------------------------------------------------ Zeitplan */
 const GAP = .5;
 const words = s => s.split(/\s+/).filter(Boolean).length;
+const TM = window.TIMING ? window.TIMING.scenes : null;
 let acc = 0;
-for (const sc of SCENES) {
+SCENES.forEach((sc, k) => {
+  const tm = TM && TM[k];
+  if (tm) { sc.dur = tm.dur; sc.lead = tm.lead; sc.tail = tm.tail; }
   sc.start = acc; acc += sc.dur;
   const total = sc.lines.reduce((n, [, s]) => n + words(s), 0);
   const per = (sc.dur - sc.lead - sc.tail - GAP * (sc.lines.length - 1)) / total;
@@ -980,15 +987,23 @@ for (const sc of SCENES) {
     line.t1 = u; t = u + GAP;
     return line;
   });
+  if (tm) sc.L.forEach((line, i) => {
+    const r = tm.lines[i];
+    // Nicht aufgenommene Zeilen liegen hinter dem Szenenende, ihre Animationen erscheinen also nie
+    if (!r) { line.t0 = line.t1 = 1e6; line.sents.forEach(s => { s.t0 = s.t1 = 1e6; }); return; }
+    line.t0 = r.t0; line.t1 = r.t1; line.words = r.words;
+    line.sents.forEach((s, j) => { [s.t0, s.t1] = r.sents[j]; });
+  });
   sc.l = i => sc.L[i];
   sc.s = (i, j) => sc.L[i].sents[j];
+  sc.wordAt = (i, re) => { const w = (sc.L[i].words || []).find(([x]) => re.test(x)); return w ? w[1] : null; };
   sc.whoAt = t => { for (const ln of sc.L) if (t >= ln.t0 - .2 && t < ln.t1 + GAP) return ln.who; return ""; };
   sc.sentAt = t => {
     let best = null;
     for (const ln of sc.L) for (const s of ln.sents) if (t >= s.t0) best = [ln.who, s.text, s.t1];
     return best && t < best[2] + GAP * .8 ? best : null;
   };
-}
+});
 const DURATION = acc;
 
 /* ------------------------------------------------------------------ Darstellung */
@@ -1018,6 +1033,15 @@ function renderAt(T0) {
   hudR.textContent = `Szene ${SCENES.indexOf(cur) + 1} · ${cur.title} · ${fmtTime(t)}`;
 }
 window.DURATION = DURATION;
+// Nur die Namensschilder auf transparentem Hintergrund, für die Einblendung über dem Intro-Video
+window.renderNames = () => {
+  const nm = window.TIMING.names;
+  document.getElementById("stage").style.background = "transparent";
+  document.documentElement.style.background = document.body.style.background = "transparent";
+  document.querySelectorAll(".hud, #sub").forEach(e => e.remove());
+  svg.innerHTML = "";
+  nm.names.forEach((n, i) => { const g = chip(svg, n, { size: 46, stroke: WHO["ABC"[i]][0] }); place(g, nm.x[i], 975); });
+};
 window.renderAt = renderAt;
 window.ready = document.fonts.ready.then(() => document.fonts.load('800 40px "Bricolage Grotesque"')).then(() => { build(); renderAt(0); return DURATION; });
 
