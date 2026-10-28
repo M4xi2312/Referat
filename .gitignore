@@ -1,2 +1,3 @@
 video/node_modules
 video/*.mp4
+!video/entwurf_ohne_untertitel.mp4
