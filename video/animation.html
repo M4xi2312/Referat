@@ -1,0 +1,1054 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Antibiotika-Video · Animationsentwurf</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@500&display=block">
+<style>
+  /* Animationen fürs Erklärvideo. Jedes Bild wird aus der Zeit t berechnet (renderAt),
+     damit render.mjs das Video Bild für Bild exakt gleich aufnehmen kann. */
+  html, body { margin: 0; height: 100%; background: #0b0f0d; overflow: hidden; }
+  #stage {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0;
+    background: #eef3f0; overflow: hidden;
+  }
+  #svg { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+  #sub {
+    position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%);
+    display: flex; align-items: flex-start; gap: 18px; max-width: 1580px; width: max-content;
+    background: rgba(255,255,255,.94); border: 2px solid #d6e0db; border-radius: 22px;
+    padding: 16px 30px 18px 18px; box-shadow: 0 6px 24px rgba(20,32,27,.12);
+    font: 400 38px/1.32 "Atkinson Hyperlegible", sans-serif; color: #14201b;
+  }
+  #sub.off { display: none; }
+  #sub .who {
+    flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
+    font: 800 30px "Bricolage Grotesque", sans-serif; margin-top: -1px;
+  }
+  .hud {
+    position: absolute; top: 28px; font: 500 22px "JetBrains Mono", monospace; letter-spacing: .06em;
+    color: #5a6a63; background: rgba(255,255,255,.8); border: 1.5px solid #d6e0db; border-radius: 99px; padding: 6px 16px;
+  }
+  #hud-l { left: 32px; } #hud-r { right: 32px; }
+  body.nohud .hud { display: none; }
+  #controls {
+    position: fixed; left: 0; right: 0; bottom: 0; height: 56px; display: flex; align-items: center; gap: 14px;
+    padding: 0 16px; background: #111815; color: #e5ede9; font: 500 15px "JetBrains Mono", monospace;
+  }
+  #controls button { background: #c98a12; color: #111815; border: 0; border-radius: 8px; font: 700 15px "Atkinson Hyperlegible", sans-serif; padding: 8px 16px; cursor: pointer; }
+  #controls input { flex: 1; accent-color: #c98a12; }
+  body.render #controls { display: none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <svg id="svg" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg"></svg>
+  <div id="hud-l" class="hud">ENTWURF · ohne Ton</div>
+  <div id="hud-r" class="hud"></div>
+  <div id="sub" class="off"><span class="who"></span><span class="txt"></span></div>
+</div>
+<div id="controls">
+  <button type="button" id="play">▶ Abspielen</button>
+  <input type="range" id="seek" min="0" max="1" step="0.01" value="0" aria-label="Zeit">
+  <span id="time">0:00</span>
+</div>
+
+<script>
+"use strict";
+/* ------------------------------------------------------------------ Grundlagen */
+const C = {
+  bg: "#eef3f0", surface: "#ffffff", ink: "#14201b", muted: "#5a6a63", line: "#d6e0db",
+  accent: "#c98a12", accentSoft: "#f6e7c4", zone: "#e3f1ea",
+  a: "#2f56cc", aSoft: "#e4eafb", b: "#b0306f", bSoft: "#f8e4ee", c: "#0d7f70", cSoft: "#dcf1ec",
+  red: "#cf3a2e", redSoft: "#fbe2df", water: "#3b8fd9", germ: "#7cc4b4", cam: "#1b2420"
+};
+const WHO = { A: [C.a, C.aSoft], B: [C.b, C.bSoft], C: [C.c, C.cSoft] };
+const F = {
+  display: '"Bricolage Grotesque", sans-serif',
+  body: '"Atkinson Hyperlegible", sans-serif',
+  mono: '"JetBrains Mono", monospace'
+};
+const NS = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("svg");
+
+function E(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs || {}) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const G = (parent, attrs) => E("g", attrs, parent);
+function T(parent, x, y, str, o) {
+  o = o || {};
+  const e = E("text", {
+    x, y, "font-family": o.font || F.body, "font-size": o.size || 40, "font-weight": o.weight || 400,
+    fill: o.fill || C.ink, "text-anchor": o.anchor || "start", "dominant-baseline": o.baseline || "auto",
+    "letter-spacing": o.ls || 0
+  }, parent);
+  e.textContent = str;
+  return e;
+}
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const io = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const out = x => 1 - Math.pow(1 - x, 3);
+const back = x => { x = clamp(x); const c1 = 1.6, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+// Fortschritt 0..1 ab Zeitpunkt a über d Sekunden
+const P = (t, a, d = .6, f = out) => f(clamp((t - a) / d));
+// Sichtbarkeit: ab a einblenden, bis b ausblenden
+const vis = (t, a, b = 1e9, fi = .5, fo = .5) => Math.min(P(t, a, fi, io), 1 - P(t, b - fo, fo, io));
+function place(g, x, y, s = 1, o = 1, r = 0) {
+  g.setAttribute("transform", `translate(${x} ${y}) rotate(${r}) scale(${s})`);
+  g.setAttribute("opacity", clamp(o));
+}
+// Einblenden mit kleinem Federn
+function pop(g, t, at, x, y, s = 1, o = 1) {
+  const p = clamp((t - at) / .55);
+  place(g, x, y, s * lerp(.6, 1, back(p)), Math.min(o, P(t, at, .35)));
+}
+function rng(seed) {
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const fmtTime = s => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+
+/* ------------------------------------------------------------------ Symbole (um 0,0 gezeichnet) */
+function xmark(parent, r = 30, color = C.red, w = 10) {
+  const g = G(parent);
+  E("path", { d: `M${-r} ${-r}L${r} ${r}M${r} ${-r}L${-r} ${r}`, stroke: color, "stroke-width": w, "stroke-linecap": "round" }, g);
+  return g;
+}
+function checkmark(parent, r = 30, color = C.c, w = 10) {
+  const g = G(parent);
+  E("path", { d: `M${-r} 0L${-r * .3} ${r * .7}L${r} ${-r * .7}`, stroke: color, "stroke-width": w, "stroke-linecap": "round", "stroke-linejoin": "round", fill: "none" }, g);
+  return g;
+}
+function bact(parent, w, h, fill = C.germ, stroke = C.c) {
+  const g = G(parent);
+  E("rect", { x: -w / 2, y: -h / 2, width: w, height: h, rx: h / 2, fill, stroke, "stroke-width": Math.max(3, h * .08) }, g);
+  E("circle", { cx: -w * .16, cy: -h * .08, r: h * .1, fill: stroke, opacity: .35 }, g);
+  E("circle", { cx: w * .18, cy: h * .12, r: h * .08, fill: stroke, opacity: .35 }, g);
+  return g;
+}
+function pill(parent, w = 130, h = 52) {
+  const g = G(parent);
+  E("rect", { x: -w / 2, y: -h / 2, width: w, height: h, rx: h / 2, fill: C.surface, stroke: C.ink, "stroke-width": 4 }, g);
+  E("path", { d: `M0 ${-h / 2 + 2}H${-w / 2 + h / 2}A${h / 2 - 2} ${h / 2 - 2} 0 0 0 ${-w / 2 + h / 2} ${h / 2 - 2}H0Z`, fill: C.accent }, g);
+  E("line", { x1: 0, y1: -h / 2, x2: 0, y2: h / 2, stroke: C.ink, "stroke-width": 4 }, g);
+  return g;
+}
+function virus(parent, r = 80) {
+  const g = G(parent);
+  for (let i = 0; i < 12; i++) {
+    const a = i / 12 * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
+    E("line", { x1: c * r * .9, y1: s * r * .9, x2: c * r * 1.35, y2: s * r * 1.35, stroke: C.b, "stroke-width": 7, "stroke-linecap": "round" }, g);
+    E("circle", { cx: c * r * 1.4, cy: s * r * 1.4, r: r * .12, fill: C.b }, g);
+  }
+  E("circle", { r, fill: C.bSoft, stroke: C.b, "stroke-width": 7 }, g);
+  E("circle", { cx: -r * .3, cy: -r * .2, r: r * .14, fill: C.b, opacity: .4 }, g);
+  E("circle", { cx: r * .25, cy: r * .3, r: r * .1, fill: C.b, opacity: .4 }, g);
+  return g;
+}
+function mushroom(parent, s = 1) {
+  const g = G(parent, { transform: `scale(${s})` });
+  E("rect", { x: -12, y: -6, width: 24, height: 40, rx: 8, fill: "#f3e6cf", stroke: C.ink, "stroke-width": 4 }, g);
+  E("path", { d: "M-42 -2C-42 -40 42 -40 42 -2Z", fill: C.accent, stroke: C.ink, "stroke-width": 4, "stroke-linejoin": "round" }, g);
+  E("circle", { cx: -14, cy: -18, r: 5, fill: C.surface }, g);
+  E("circle", { cx: 12, cy: -24, r: 4, fill: C.surface }, g);
+  return g;
+}
+function flask(parent, s = 1) {
+  const g = G(parent, { transform: `scale(${s})` });
+  E("path", { d: "M-10 -38V-12L-34 30Q-38 38 -28 38H28Q38 38 34 30L10 -12V-38", fill: C.surface, stroke: C.ink, "stroke-width": 4, "stroke-linejoin": "round" }, g);
+  E("path", { d: "M-22 12L22 12L31 30Q34 35 26 35H-26Q-34 35 -31 30Z", fill: C.a, opacity: .7 }, g);
+  E("line", { x1: -16, y1: -38, x2: 16, y2: -38, stroke: C.ink, "stroke-width": 4, "stroke-linecap": "round" }, g);
+  return g;
+}
+function hospital(parent, s = 1) {
+  const g = G(parent, { transform: `scale(${s})` });
+  E("rect", { x: -110, y: -60, width: 220, height: 150, rx: 10, fill: C.surface, stroke: C.ink, "stroke-width": 6 }, g);
+  E("rect", { x: -50, y: -120, width: 100, height: 70, rx: 10, fill: C.surface, stroke: C.ink, "stroke-width": 6 }, g);
+  E("path", { d: "M-8 -108h16v14h14v16h-14v14h-16v-14h-14v-16h14z", fill: C.red }, g);
+  for (const x of [-80, -30, 30, 80]) for (const y of [-30, 15]) E("rect", { x: x - 14, y, width: 28, height: 26, rx: 4, fill: C.aSoft, stroke: C.a, "stroke-width": 3 }, g);
+  E("rect", { x: -20, y: 50, width: 40, height: 40, fill: C.ink }, g);
+  return g;
+}
+function barn(parent, s = 1) {
+  const g = G(parent, { transform: `scale(${s})` });
+  E("path", { d: "M-100 90V-10L0 -90L100 -10V90Z", fill: "#b5523b", stroke: C.ink, "stroke-width": 6, "stroke-linejoin": "round" }, g);
+  E("path", { d: "M-112 0L0 -104L112 0", fill: "none", stroke: C.ink, "stroke-width": 10, "stroke-linecap": "round", "stroke-linejoin": "round" }, g);
+  E("rect", { x: -40, y: 20, width: 80, height: 70, fill: C.surface, stroke: C.ink, "stroke-width": 6 }, g);
+  E("path", { d: "M-40 20L40 90M40 20L-40 90", stroke: C.ink, "stroke-width": 5 }, g);
+  E("circle", { cx: 0, cy: -30, r: 16, fill: C.surface, stroke: C.ink, "stroke-width": 5 }, g);
+  return g;
+}
+function person(parent, s = 1, color = C.a) {
+  const g = G(parent, { transform: `scale(${s})` });
+  E("circle", { cx: 0, cy: -50, r: 32, fill: color }, g);
+  E("path", { d: "M-58 70C-58 0 58 0 58 70Z", fill: color }, g);
+  return g;
+}
+function drop(parent, s = 1, color = "#8a5a33") {
+  const g = G(parent, { transform: `scale(${s})` });
+  E("path", { d: "M0 -40C18 -14 30 2 30 18A30 30 0 0 1 -30 18C-30 2 -18 -14 0 -40Z", fill: color }, g);
+  return g;
+}
+function waves(parent, s = 1) {
+  const g = G(parent, { transform: `scale(${s})` });
+  for (const y of [-18, 0, 18]) E("path", { d: `M-36 ${y}q9 -10 18 0t18 0t18 0t18 0`, fill: "none", stroke: C.water, "stroke-width": 7, "stroke-linecap": "round" }, g);
+  return g;
+}
+function drumstick(parent, s = 1) {
+  const g = G(parent, { transform: `scale(${s})` });
+  E("path", { d: "M8 12L26 30", stroke: "#f2ead8", "stroke-width": 11, "stroke-linecap": "round" }, g);
+  E("circle", { cx: 30, cy: 26, r: 7, fill: "#f2ead8" }, g);
+  E("circle", { cx: 24, cy: 34, r: 7, fill: "#f2ead8" }, g);
+  E("ellipse", { cx: -8, cy: -6, rx: 26, ry: 21, transform: "rotate(45 -8 -6)", fill: "#c27a3a" }, g);
+  return g;
+}
+function steak(parent, s = 1) {
+  const g = G(parent, { transform: `scale(${s})` });
+  E("path", { d: "M-30 -12C-26 -32 16 -34 28 -14C40 6 22 30 -6 28C-30 26 -36 8 -30 -12Z", fill: "#b43c3c" }, g);
+  E("path", { d: "M-20 -8C-10 -20 12 -20 20 -6", fill: "none", stroke: "#f6e0d6", "stroke-width": 6, "stroke-linecap": "round" }, g);
+  return g;
+}
+function stopSign(parent, r = 64) {
+  const g = G(parent);
+  let d = "";
+  for (let i = 0; i < 8; i++) { const a = (i + .5) / 8 * Math.PI * 2; d += (i ? "L" : "M") + (Math.cos(a) * r).toFixed(1) + " " + (Math.sin(a) * r).toFixed(1); }
+  E("path", { d: d + "Z", fill: C.red, stroke: C.surface, "stroke-width": 6 }, g);
+  T(g, 0, 2, "STOP", { anchor: "middle", baseline: "central", size: r * .52, weight: 800, font: F.display, fill: C.surface });
+  return g;
+}
+function medal(parent, s = 1) {
+  const g = G(parent, { transform: `scale(${s})` });
+  E("path", { d: "M-18 -40L-6 -6M18 -40L6 -6", stroke: C.a, "stroke-width": 12 }, g);
+  E("circle", { cx: 0, cy: 14, r: 24, fill: "#e8b931", stroke: "#a57a0b", "stroke-width": 4 }, g);
+  return g;
+}
+function camIcon(parent, s = 1, color = C.accent) {
+  const g = G(parent, { transform: `scale(${s})` });
+  E("rect", { x: -60, y: -38, width: 92, height: 76, rx: 14, fill: "none", stroke: color, "stroke-width": 8 }, g);
+  E("path", { d: "M40 -16L68 -34V34L40 16Z", fill: color }, g);
+  E("circle", { cx: -14, cy: 0, r: 16, fill: color }, g);
+  return g;
+}
+let clipId = 0;
+function flag(parent, kind, r) {
+  const g = G(parent), id = "clip" + (++clipId);
+  const cp = E("clipPath", { id }, g);
+  E("circle", { r }, cp);
+  const f = G(g, { "clip-path": `url(#${id})` });
+  if (kind === "BR") {
+    E("rect", { x: -r, y: -r, width: 2 * r, height: 2 * r, fill: "#1f9c4c" }, f);
+    E("path", { d: `M${-r * .85} 0L0 ${-r * .62}L${r * .85} 0L0 ${r * .62}Z`, fill: "#f7d117" }, f);
+    E("circle", { r: r * .38, fill: "#213a8f" }, f);
+    E("path", { d: `M${-r * .37} ${-r * .07}Q0 ${-r * .2} ${r * .37} ${r * .08}`, stroke: C.surface, "stroke-width": r * .07, fill: "none" }, f);
+  } else if (kind === "EU") {
+    E("rect", { x: -r, y: -r, width: 2 * r, height: 2 * r, fill: "#1d3d95" }, f);
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * Math.PI * 2, cx = Math.cos(a) * r * .58, cy = Math.sin(a) * r * .58, sr = r * .09;
+      let d = "";
+      for (let k = 0; k < 10; k++) { const b = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? sr * .45 : sr; d += (k ? "L" : "M") + (cx + Math.cos(b) * rr).toFixed(1) + " " + (cy + Math.sin(b) * rr).toFixed(1); }
+      E("path", { d: d + "Z", fill: "#f7d117" }, f);
+    }
+  } else {
+    E("rect", { x: -r, y: -r, width: 2 * r, height: 2 * r, fill: "#d52b1e" }, f);
+    E("path", { d: `M${-r * .13} ${-r * .55}h${r * .26}v${r * .42}h${r * .42}v${r * .26}h${-r * .42}v${r * .42}h${-r * .26}v${-r * .42}h${-r * .42}v${-r * .26}h${r * .42}z`, fill: C.surface }, f);
+  }
+  E("circle", { r, fill: "none", stroke: C.surface, "stroke-width": 8 }, g);
+  E("circle", { r: r + 4, fill: "none", stroke: C.line, "stroke-width": 2 }, g);
+  return g;
+}
+// Beschriftete Pille, um 0,0 zentriert; mark: "x" | "check" | "warn"
+function chip(parent, text, o) {
+  o = o || {};
+  const size = o.size || 34, h = size * 1.85, g = G(parent);
+  const r = E("rect", {}, g);
+  const tx = T(g, 0, 1, text, { size, weight: o.weight || 700, fill: o.fill || C.ink, anchor: "start", baseline: "central", font: o.font || F.body });
+  const w = tx.getBBox().width, icon = o.mark ? size * 1.3 : 0, pad = size * .8;
+  const total = w + icon + pad * 2;
+  tx.setAttribute("x", -total / 2 + pad + icon);
+  if (o.mark) {
+    const ix = -total / 2 + pad + size * .45, ig = G(g, { transform: `translate(${ix} 0)` });
+    if (o.mark === "x") xmark(ig, size * .3, C.red, size * .16);
+    else if (o.mark === "check") checkmark(ig, size * .34, C.c, size * .16);
+    else { E("path", { d: `M0 ${-size * .45}L${size * .48} ${size * .4}H${-size * .48}Z`, fill: C.accent }, ig); T(ig, 0, size * .12, "!", { anchor: "middle", baseline: "central", size: size * .6, weight: 800, fill: C.surface }); }
+  }
+  for (const [k, v] of Object.entries({ x: -total / 2, y: -h / 2, width: total, height: h, rx: h / 2, fill: o.bg || C.surface, stroke: o.stroke || C.line, "stroke-width": 3 })) r.setAttribute(k, v);
+  return g;
+}
+// Petrischale mit Bakterienrasen, Schimmel und Hemmzone
+function petri(parent, R, seed) {
+  const g = G(parent), rnd = rng(seed);
+  E("circle", { r: R, fill: C.surface, stroke: C.line, "stroke-width": R * .03 }, g);
+  E("circle", { r: R * .9, fill: C.zone, stroke: C.line, "stroke-width": 2 }, g);
+  const dots = [];
+  for (let i = 0; i < 160 && dots.length < 70; i++) {
+    const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * R * .82;
+    const x = Math.cos(a) * d, y = Math.sin(a) * d;
+    if (dots.some(o => Math.hypot(o.x - x, o.y - y) < R * .09)) continue;
+    dots.push({ x, y, d, delay: rnd(), e: E("circle", { cx: x, cy: y, r: R * (.018 + rnd() * .012), fill: C.muted }, g) });
+  }
+  const ring = E("circle", { r: R * .45, fill: "none", stroke: C.accent, "stroke-width": R * .012, "stroke-dasharray": `${R * .03} ${R * .035}` }, g);
+  const mold = G(g);
+  for (const [x, y, r] of [[0, 0, .16], [-.12, -.07, .09], [.11, .09, .1], [.08, -.11, .075], [-.09, .11, .075]]) E("circle", { cx: x * R, cy: y * R, r: r * R, fill: C.accent }, mold);
+  return {
+    g,
+    update(pDots, pMold, pZone) {
+      const zr = R * .45 * pZone;
+      for (const o of dots) {
+        const inZone = clamp((zr - o.d + R * .04) / (R * .08));
+        o.e.setAttribute("opacity", clamp(pDots * 1.6 - o.delay * .6) * .6 * (1 - inZone));
+      }
+      mold.setAttribute("transform", `scale(${pMold})`);
+      ring.setAttribute("opacity", pZone);
+      ring.setAttribute("r", Math.max(1, zr));
+    }
+  };
+}
+// Platzhalter für Szenen, die ihr selbst filmt
+function camPlaceholder(parent, note) {
+  const g = G(parent);
+  E("rect", { width: 1920, height: 1080, fill: C.cam }, g);
+  E("rect", { x: 40, y: 40, width: 1840, height: 1000, rx: 28, fill: "none", stroke: C.accent, "stroke-width": 4, "stroke-dasharray": "18 14", opacity: .7 }, g);
+  const icon = G(g); camIcon(icon, 1.6); place(icon, 960, 250);
+  T(g, 960, 400, "KAMERA", { anchor: "middle", size: 92, weight: 800, font: F.display, fill: "#e5ede9", ls: 8 });
+  T(g, 960, 466, note, { anchor: "middle", size: 36, fill: "#92a29b" });
+  const sp = {};
+  ["A", "B", "C"].forEach((w, i) => {
+    const s = G(g); const [col, soft] = WHO[w];
+    s.ring = E("circle", { r: 88, fill: "none", stroke: col, "stroke-width": 6 }, s);
+    E("circle", { r: 72, fill: soft }, s);
+    T(s, 0, 4, w, { anchor: "middle", baseline: "central", size: 72, weight: 800, font: F.display, fill: col });
+    s.x = 760 + i * 200;
+    place(s, s.x, 640);
+    sp[w] = s;
+  });
+  return who => {
+    for (const w in sp) {
+      const on = w === who;
+      place(sp[w], sp[w].x, 640, on ? 1.12 : .9, on ? 1 : .45);
+      sp[w].ring.setAttribute("opacity", on ? 1 : 0);
+    }
+  };
+}
+
+/* ------------------------------------------------------------------ Szenen */
+// Texte 1:1 aus index.html. Zeiten pro Satz werden aus der Wortzahl geschätzt,
+// bis echte Aufnahmen da sind (dann ersetzen wir sie durch die gemessenen Längen).
+const SCENES = [
+{
+  title: "Intro", dur: 20, lead: 5.5, tail: .5, cam: true,
+  lines: [
+    ["A", "Stell dir vor, ein kleiner Kratzer am Knie könnte tödlich sein."],
+    ["B", "Vor 100 Jahren war das ganz normal. Dass das heute anders ist, verdanken wir den Antibiotika."],
+    ["C", "In diesem Video erklären wir, was sie sind, wie sie wirken und warum sie in Gefahr sind."]
+  ],
+  build(root, S) {
+    const cam = G(root), setWho = camPlaceholder(cam, "Szene 1 · ihr drei im Bild");
+    const names = G(root);
+    ["A", "B", "C"].forEach((w, i) => { const n = chip(names, "Name " + w, { size: 36, stroke: WHO[w][0] }); place(n, 660 + i * 300, 0); });
+    const title = G(root);
+    E("rect", { width: 1920, height: 1080, fill: C.bg }, title);
+    const dishG = G(title), dish = petri(dishG, 250, 7);
+    T(title, 860, 330, "ERKLÄRVIDEO", { size: 30, font: F.mono, fill: C.muted, ls: 6 });
+    const tl = ["Antibiotika –", "Wunderwaffe mit", "Ablaufdatum?"].map((s, i) => {
+      const g = G(title);
+      T(g, 0, 0, s, { size: 118, weight: 800, font: F.display, fill: i === 2 ? C.accent : C.ink, ls: -2 });
+      return g;
+    });
+    return t => {
+      const to = 1 - P(t, S.lead - .5, .5, io);
+      title.setAttribute("opacity", to);
+      place(dishG, 500, 540, lerp(.5, 1, back(t / .9)), P(t, 0, .4));
+      dish.update(P(t, .4, 1.2), P(t, 1.4, 1.2, back), P(t, 2.2, 1.4));
+      tl.forEach((g, i) => place(g, 860 + 60 * (1 - P(t, .8 + i * .35, .7)), 450 + i * 130, 1, P(t, .8 + i * .35, .6)));
+      tl[2].setAttribute("transform", tl[2].getAttribute("transform") + ` rotate(${Math.sin(clamp(t - 3, 0, 1) * Math.PI * 3) * 2 * (1 - clamp(t - 3))})`);
+      cam.setAttribute("opacity", t > S.lead - .5 ? 1 : 0);
+      setWho(S.whoAt(t));
+      place(names, 0, lerp(820, 790, P(t, 15.5, .6)), 1, P(t, 15.5, .5));
+    };
+  }
+},
+{
+  title: "Was sind Antibiotika + Geschichte", dur: 55, lead: 1.2, tail: .8,
+  lines: [
+    ["A", "Das Wort Antibiotikum kommt aus dem Griechischen: „anti“ heißt gegen, „bios“ heißt Leben. Gemeint sind Stoffe, die Bakterien am Wachsen hindern oder sie abtöten. Ursprünglich stammen sie von Pilzen oder Bakterien selbst, heute werden viele auch künstlich hergestellt. Wichtig: Gegen Viren, also zum Beispiel gegen Grippe oder Corona, helfen sie nicht."],
+    ["A", "Schon 1897 beschrieb der junge französische Militärarzt Ernest Duchesne in seiner Doktorarbeit, dass Schimmelpilze Bakterien töten können. Doch niemand interessierte sich dafür. 1910 brachte Paul Ehrlich das erste wirksame und relativ ungefährliche Mittel gegen die Syphilis auf den Markt: Salvarsan."],
+    ["A", "Der große Durchbruch kam 1928 durch Zufall. Alexander Fleming ließ eine Bakterienkultur stehen, und darauf wuchs ein Schimmelpilz. Rund um den Pilz wuchsen keine Bakterien mehr. Den Stoff nannte er Penicillin. Ab 1941 wurden damit die ersten Patienten behandelt, und 1945 bekam Fleming dafür den Nobelpreis."]
+  ],
+  build(root, S) {
+    /* Teil 1: Wortherkunft */
+    const word = G(root);
+    const gr = chip(word, "griechisch", { size: 30, font: F.mono, fill: C.muted });
+    const anti = T(word, -8, 60, "Anti", { size: 210, weight: 800, font: F.display, anchor: "end", fill: C.a });
+    const bios = T(word, 8, 60, "bios", { size: 210, weight: 800, font: F.display, anchor: "start", fill: C.c });
+    const gegen = T(word, 0, 170, "= gegen", { size: 76, weight: 700, anchor: "end", fill: C.a });
+    const leben = T(word, 0, 170, "= Leben", { size: 76, weight: 700, anchor: "start", fill: C.c });
+    const kill = G(root), b1 = G(kill); bact(b1, 300, 130);
+    const kx = G(kill); xmark(kx, 46); const p1 = G(kill); pill(p1);
+    const origin = G(root);
+    const og = [["Pilze", mushroom], ["Bakterien", p => bact(p, 90, 42)], ["Labor", flask]].map(([lab, ic]) => {
+      const g = G(origin);
+      E("rect", { x: -170, y: -120, width: 340, height: 240, rx: 28, fill: C.surface, stroke: C.line, "stroke-width": 3 }, g);
+      const i = G(g, { transform: "translate(0 -30) scale(1.5)" }); ic(i);
+      T(g, 0, 80, lab, { anchor: "middle", size: 40, weight: 700 });
+      return g;
+    });
+    const vir = G(root), vg = G(vir); virus(vg, 95);
+    const vp = G(vir); pill(vp);
+    const vx = G(vir); xmark(vx, 70, C.red, 18);
+    const vl = T(vir, 0, 0, "Viren, z. B. Grippe oder Corona", { anchor: "middle", size: 42, weight: 700, fill: C.b });
+    const vl2 = G(vir); chip(vl2, "Antibiotika wirken nicht", { size: 36, mark: "x" });
+
+    /* Teil 2: Zeitstrahl */
+    const tl = G(root);
+    const axis = E("line", { x1: 200, y1: 470, x2: 1720, y2: 470, stroke: C.ink, "stroke-width": 8, "stroke-linecap": "round", pathLength: 1 }, tl);
+    const yx = y => 260 + (y - 1890) / 55 * 1400;
+    const stations = [
+      [1897, "Ernest Duchesne", "Schimmel tötet Bakterien"],
+      [1910, "Paul Ehrlich", "Salvarsan gegen Syphilis"],
+      [1928, "Alexander Fleming", "Penicillin"],
+      [1941, "Erste Patienten", "mit Penicillin behandelt"]
+    ].map(([year, a, b]) => {
+      const g = G(tl);
+      E("circle", { r: 20, fill: C.accent, stroke: C.ink, "stroke-width": 6 }, g);
+      T(g, 0, -50, String(year), { anchor: "middle", size: 66, weight: 800, font: F.display });
+      const card = G(g);
+      E("rect", { x: -150, y: 50, width: 300, height: 140, rx: 20, fill: C.surface, stroke: C.line, "stroke-width": 3 }, card);
+      T(card, 0, 108, a, { anchor: "middle", size: 31, weight: 700 });
+      T(card, 0, 152, b, { anchor: "middle", size: 26, fill: C.muted });
+      return { g, card, x: yx(year) };
+    });
+    const stamp = G(tl);
+    E("rect", { x: -130, y: -36, width: 260, height: 72, rx: 10, fill: C.surface, stroke: C.red, "stroke-width": 6 }, stamp);
+    T(stamp, 0, 2, "IGNORIERT", { anchor: "middle", baseline: "central", size: 40, weight: 800, font: F.display, fill: C.red, ls: 3 });
+
+    /* Teil 3: Flemings Petrischale */
+    const fl = G(root);
+    const dG = G(fl), dish = petri(dG, 300, 3);
+    const zoneLab = T(fl, 640, 470 - 300 * .45 - 20, "Hemmzone", { anchor: "middle", size: 30, font: F.mono, fill: C.accent });
+    const right = G(fl);
+    const r1 = G(right); T(r1, 0, 0, "1928", { size: 120, weight: 800, font: F.display }); T(r1, 0, 52, "St. Mary’s Hospital, London", { size: 34, fill: C.muted });
+    const r2 = G(right); chip(r2, "Schimmelpilz wächst", { size: 34 });
+    const r3 = G(right); chip(r3, "Rundherum: keine Bakterien", { size: 34, mark: "check" });
+    const r4 = G(right); T(r4, 0, 0, "Penicillin", { size: 112, weight: 800, font: F.display, fill: C.accent });
+    const r5 = G(right); chip(r5, "1941 · erste Patienten", { size: 32 });
+    const r6 = G(right); const md = G(r6); medal(md, 1.1); T(r6, 50, 24, "1945 · Nobelpreis", { size: 34, weight: 700 });
+
+    return t => {
+      const L0 = S.l(0), L1 = S.l(1), L2 = S.l(2);
+      // Teil 1
+      const sp = P(t, S.s(0, 0).t0 + 2.6, 1.2, io);
+      const up = P(t, S.s(0, 1).t0 - .3, .9, io);
+      place(word, 960, lerp(400, 190, up), lerp(1, .55, up), vis(t, .2, L0.t1 + .3));
+      place(gr, 0, -200, 1, P(t, 1, .5) * (1 - up));
+      anti.setAttribute("x", -8 - sp * 200); bios.setAttribute("x", 8 + sp * 200);
+      gegen.setAttribute("x", -8 - sp * 200); leben.setAttribute("x", 8 + sp * 200);
+      gegen.setAttribute("opacity", P(t, S.s(0, 0).t0 + 3.2, .5)); leben.setAttribute("opacity", P(t, S.s(0, 0).t0 + 4.4, .5));
+      const s1 = S.s(0, 1), hit = s1.t0 + 2.2;
+      kill.setAttribute("opacity", vis(t, s1.t0, s1.t1 + .3));
+      place(b1, 1060, 620, 1, lerp(1, .3, P(t, hit, .6)));
+      place(p1, lerp(380, 860, P(t, s1.t0 + .8, 1.4, io)), 620, 1, 1 - P(t, hit + .3, .4), lerp(0, 25, P(t, s1.t0 + .8, 1.4)));
+      pop(kx, t, hit + .1, 1060, 620);
+      const s2 = S.s(0, 2);
+      origin.setAttribute("opacity", vis(t, s2.t0, s2.t1 + .3));
+      og.forEach((g, i) => pop(g, t, s2.t0 + .4 + i * (i === 2 ? 1.8 : .7), 560 + i * 400, 620));
+      const s3 = S.s(0, 3);
+      vir.setAttribute("opacity", vis(t, s3.t0, L0.t1 + .3));
+      place(vg, 960, 600, 1 + .03 * Math.sin(t * 4));
+      const pb = P(t, s3.t0 + 1, .9, io), bounce = P(t, s3.t0 + 1.9, .8);
+      place(vp, lerp(400, 790, pb) - bounce * 120, 600 + bounce * 60, 1, 1 - P(t, s3.t0 + 2.5, .4), bounce * -30);
+      pop(vx, t, s3.t0 + 2, 960, 600);
+      vl.setAttribute("x", 960); vl.setAttribute("y", 445); vl.setAttribute("opacity", P(t, s3.t0 + .3, .5));
+      pop(vl2, t, s3.t0 + 2.4, 960, 800);
+      // Teil 2
+      tl.setAttribute("opacity", vis(t, L1.t0 - .4, L2.t0 + .2));
+      const due = [S.s(1, 0).t0 + 1.4, S.s(1, 2).t0 + .4, L1.t1 - 2.6, L1.t1 - 1.2];
+      const lastDue = due.reduce((m, d, i) => t >= d ? i : m, -1);
+      const axisTo = lastDue < 0 ? .1 : (stations[lastDue].x - 200) / 1520 + .03;
+      const axisP = P(t, L1.t0, 1, io);
+      axis.setAttribute("stroke-dasharray", `${lerp(0, Math.max(.12, axisTo), axisP)} 1`);
+      stations.forEach((s, i) => {
+        pop(s.g, t, due[i], s.x, 470);
+        s.card.setAttribute("opacity", i === 0 ? lerp(1, .45, P(t, S.s(1, 1).t0 + .4, .5)) : 1);
+      });
+      place(stamp, stations[0].x, 590, lerp(1.6, 1, back((t - S.s(1, 1).t0 - .4) / .4)), P(t, S.s(1, 1).t0 + .4, .2), -8);
+      // Teil 3
+      fl.setAttribute("opacity", vis(t, L2.t0, 99));
+      const f = i => S.s(2, i);
+      place(dG, 640, 470, lerp(.7, 1, back((t - f(0).t0) / .8)), P(t, f(0).t0, .4));
+      dish.update(P(t, f(0).t0 + .3, 1.5), P(t, f(1).t0 + 1.4, 2.5, out), P(t, f(2).t0, 2, io));
+      zoneLab.setAttribute("opacity", P(t, f(2).t0 + 1.2, .5));
+      place(right, 1080, 0);
+      pop(r1, t, f(0).t0 + .4, 0, 270);
+      pop(r2, t, f(1).t0 + 1.4, 190, 410);
+      pop(r3, t, f(2).t0 + .6, 235, 510);
+      pop(r4, t, f(3).t0 + .3, 0, 680);
+      pop(r5, t, f(4).t0 + .5, 175, 770);
+      pop(r6, t, f(4).t0 + 3.6, 430, 760);
+    };
+  }
+},
+{
+  title: "Wirkmechanismen", dur: 55, lead: 1, tail: .8,
+  lines: [
+    ["B", "Aber warum töten Antibiotika Bakterien und nicht unsere eigenen Zellen? Der Trick: Sie greifen Teile an, die nur Bakterien haben."],
+    ["B", "Erstens die Zellwand. Bakterien haben eine Wand aus einem Stoff namens Murein, den es bei Menschen nicht gibt. Penicillin stört den Aufbau dieser Wand. Es entstehen Löcher, Wasser strömt ein, und das Bakterium platzt."],
+    ["B", "Zweitens die Ribosomen, die Proteinfabriken der Zelle. Die von Bakterien sind anders gebaut als unsere. Antibiotika wie Tetracycline blockieren sie, und das Bakterium kann keine Proteine mehr herstellen."],
+    ["B", "Drittens die Erbinformation. Manche Antibiotika verhindern, dass das Bakterium seine DNA kopieren kann. Dann kann es sich nicht mehr teilen."],
+    ["B", "Es gibt also zwei Arten von Wirkung: Bakteriostatisch heißt, die Bakterien können sich nicht mehr vermehren. Bakterizid heißt, sie werden abgetötet."]
+  ],
+  build(root, S) {
+    const W = 860, H = 400, rnd = rng(11);
+    const scene = G(root);
+    const cellG = G(scene), cell = G(cellG);
+    E("rect", { x: -W / 2 + 14, y: -H / 2 + 14, width: W - 28, height: H - 28, rx: H / 2 - 14, fill: C.cSoft }, cell);
+    const wall = E("rect", { x: -W / 2, y: -H / 2, width: W, height: H, rx: H / 2, fill: "none", stroke: C.c, "stroke-width": 20, pathLength: 100 }, cell);
+    E("rect", { x: -W / 2 + 20, y: -H / 2 + 20, width: W - 40, height: H - 40, rx: H / 2 - 20, fill: "none", stroke: C.c, "stroke-width": 3, opacity: .5 }, cell);
+    const dnaPath = (r, cx, cy) => {
+      let d = "";
+      for (let i = 0; i <= 200; i++) { const a = i / 200 * Math.PI * 2, rr = r + r * .1 * Math.sin(a * 9); d += (i ? "L" : "M") + (cx + Math.cos(a) * rr * 1.25).toFixed(1) + " " + (cy + Math.sin(a) * rr * .8).toFixed(1); }
+      return d + "Z";
+    };
+    const dna = E("path", { d: dnaPath(95, 40, 0), fill: "none", stroke: C.b, "stroke-width": 9, "stroke-linejoin": "round" }, cell);
+    const ribos = [];
+    while (ribos.length < 16) {
+      const x = (rnd() - .5) * (W - 180), y = (rnd() - .5) * (H - 130);
+      if (Math.abs(x - 40) < 170 && Math.abs(y) < 110) continue;
+      if (ribos.some(r => Math.hypot(r.x - x, r.y - y) < 60)) continue;
+      const g = G(cell, { transform: `translate(${x} ${y})` });
+      E("circle", { cx: 0, cy: -5, r: 14, fill: C.a }, g); E("circle", { cx: 3, cy: 10, r: 10, fill: C.a, opacity: .7 }, g);
+      ribos.push({ x, y, g });
+    }
+    const hiRibo = ribos.reduce((m, r) => (r.x < m.x ? r : m), ribos[0]);
+    const riboRing = E("circle", { cx: hiRibo.x, cy: hiRibo.y, r: 30, fill: "none", stroke: C.accent, "stroke-width": 6 }, cell);
+    const dnaRing = E("ellipse", { cx: 40, cy: 0, rx: 150, ry: 100, fill: "none", stroke: C.accent, "stroke-width": 6, "stroke-dasharray": "14 10" }, cell);
+    // Penicillin-Moleküle docken an der Wand an
+    const hexes = [-300, -100, 100, 300].flatMap(x => [[x, -H / 2, -1], [x, H / 2, 1]]).map(([x, y, n], i) => {
+      const g = G(cell);
+      let d = ""; for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; d += (k ? "L" : "M") + (Math.cos(a) * 18).toFixed(1) + " " + (Math.sin(a) * 18).toFixed(1); }
+      E("path", { d: d + "Z", fill: C.accent, stroke: C.ink, "stroke-width": 3 }, g);
+      return { g, x, y, n, k: i };
+    });
+    const drops = [-220, 0, 220].flatMap(x => [[x, -1], [x, 1]]).map(([x, n]) => ({ x, n, g: drop(cell, .5, C.water) }));
+    const burst = G(cellG);
+    for (let i = 0; i < 14; i++) {
+      const a = i / 14 * Math.PI * 2;
+      E("line", { x1: Math.cos(a) * 470, y1: Math.sin(a) * 250, x2: Math.cos(a) * 600, y2: Math.sin(a) * 330, stroke: C.c, "stroke-width": 10, "stroke-linecap": "round" }, burst);
+    }
+    const plat = T(burst, 0, 20, "platzt!", { anchor: "middle", baseline: "central", size: 110, weight: 800, font: F.display, fill: C.red });
+
+    // Beschriftungen
+    const labels = G(scene);
+    const lab = (x, y, tx, ty, s, anchor) => {
+      const g = G(labels);
+      E("line", { x1: x, y1: y, x2: tx, y2: ty, stroke: C.ink, "stroke-width": 3 }, g);
+      E("circle", { cx: tx, cy: ty, r: 7, fill: C.ink }, g);
+      T(g, x + (anchor === "end" ? -12 : 12), y + 12, s, { size: 38, weight: 700, anchor });
+      return g;
+    };
+    const L = [lab(560, 150, 680, 280, "Zellwand", "end"), lab(1440, 150, 1100, 395, "DNA-Ring", "start"), lab(560, 790, 960 + hiRibo.x, 470 + hiRibo.y + 14, "Ribosomen", "end")];
+    const q = T(scene, 960, 140, "Was haben nur Bakterien?", { anchor: "middle", size: 54, weight: 800, font: F.display });
+    const badge = (n, col) => {
+      const g = G(scene);
+      E("circle", { r: 44, fill: col }, g);
+      T(g, 0, 3, String(n), { anchor: "middle", baseline: "central", size: 56, weight: 800, font: F.display, fill: C.surface });
+      return g;
+    };
+    const b1 = badge(1, C.c), b2 = badge(2, C.a), b3 = badge(3, C.b);
+    const mur = G(scene); chip(mur, "Murein – gibt es nur bei Bakterien", { size: 36 });
+
+    // Lupe rechts
+    const inset = G(scene);
+    E("circle", { cx: 0, cy: 0, r: 290, fill: C.surface, stroke: C.ink, "stroke-width": 6 }, inset);
+    const zoomL = E("path", { fill: C.ink, opacity: .06 }, scene);
+    const riboBig = G(inset);
+    E("line", { x1: -250, y1: 20, x2: 250, y2: 20, stroke: C.b, "stroke-width": 8, "stroke-dasharray": "22 10" }, riboBig);
+    E("ellipse", { cx: 0, cy: -50, rx: 150, ry: 95, fill: C.a }, riboBig);
+    E("ellipse", { cx: 0, cy: 75, rx: 120, ry: 58, fill: C.a, opacity: .65 }, riboBig);
+    const beads = [];
+    for (let i = 0; i < 12; i++) beads.push(E("circle", { cx: -30 + i * 14, cy: -140 - i * 7 + 8 * Math.sin(i * .9), r: 12, fill: ["#e8b931", "#5fd2bf", "#f08cbf"][i % 3], stroke: C.ink, "stroke-width": 3 }, riboBig));
+    const tetra = G(riboBig);
+    E("rect", { x: -26, y: -26, width: 52, height: 52, rx: 8, fill: C.accent, stroke: C.ink, "stroke-width": 4 }, tetra);
+    const riboX = G(riboBig); xmark(riboX, 40, C.red, 14);
+    const dnaBig = G(inset);
+    E("path", { d: dnaPath(120, -30, -10), fill: "none", stroke: C.b, "stroke-width": 12 }, dnaBig);
+    const dnaCopy = E("path", { d: dnaPath(120, 20, 30), fill: "none", stroke: C.b, "stroke-width": 12, opacity: .45, pathLength: 1, "stroke-dasharray": "0 1" }, dnaBig);
+    const dnaX = G(dnaBig); xmark(dnaX, 54, C.red, 16);
+    const insetTitle = T(scene, 1340, 110, "", { anchor: "middle", size: 44, weight: 800, font: F.display });
+    const c70 = G(scene); chip(c70, "Bakterium: 70S", { size: 32, stroke: C.a });
+    const c80 = G(scene); chip(c80, "Mensch: 80S", { size: 32 });
+    const noProt = G(scene); chip(noProt, "keine Proteine mehr", { size: 34, mark: "x" });
+    const gyr = G(scene); chip(gyr, "DNA kann nicht kopiert werden", { size: 34, mark: "x" });
+    const noDiv = G(scene); chip(noDiv, "keine Teilung", { size: 34, mark: "x" });
+
+    // Vergleich bakteriostatisch / bakterizid
+    const split = G(root);
+    const panels = [["bakteriostatisch", "hemmt die Vermehrung", C.a], ["bakterizid", "tötet ab", C.red]].map(([h, s, col], i) => {
+      const g = G(split);
+      E("rect", { x: 0, y: 0, width: 840, height: 680, rx: 30, fill: C.surface, stroke: C.line, "stroke-width": 3 }, g);
+      T(g, 420, 100, h, { anchor: "middle", size: 70, weight: 800, font: F.display, fill: col });
+      T(g, 420, 160, s, { anchor: "middle", size: 38, fill: C.muted });
+      const bs = [];
+      for (let k = 0; k < 6; k++) { const b = G(g); bact(b, 150, 66); bs.push({ g: b, x: 170 + (k % 3) * 250, y: 330 + Math.floor(k / 3) * 170 }); }
+      place(g, 80 + i * 920, 140);
+      return { g, bs };
+    });
+    const pause = G(split);
+    E("circle", { r: 54, fill: C.a }, pause);
+    E("rect", { x: -20, y: -24, width: 13, height: 48, rx: 3, fill: C.surface }, pause);
+    E("rect", { x: 7, y: -24, width: 13, height: 48, rx: 3, fill: C.surface }, pause);
+
+    return t => {
+      const l = i => S.l(i), s = (i, j) => S.s(i, j);
+      scene.setAttribute("opacity", vis(t, 0, l(4).t0 + .2));
+      split.setAttribute("opacity", vis(t, l(4).t0, 99));
+      // Zelle: Position, Zustand
+      const toSide = P(t, l(2).t0 + .2, 1, io);
+      const popAt = l(1).t1 - .6, back2 = P(t, l(2).t0 - .3, .6);
+      const swell = P(t, s(1, 3).t0, s(1, 3).t1 - s(1, 3).t0 - .6, io);
+      const popP = P(t, popAt, .35, io);
+      const visCell = t < l(1).t1 ? 1 - popP : back2;
+      const sc = (t < l(1).t1 ? (1 + swell * .08 + popP * .2) : 1) * lerp(1, .6, toSide);
+      place(cellG, lerp(960, 520, toSide), 470, lerp(.85, 1, P(t, .2, 1, back)), P(t, .2, .5));
+      place(cell, 0, 0, sc, visCell);
+      place(burst, 0, 0, lerp(.8, 1.1, P(t, popAt, .4)), t < l(1).t1 + .1 ? vis(t, popAt + .1, l(1).t1 + .1, .15, .3) : 0);
+      // Beschriftungen
+      const labOn = vis(t, s(0, 1).t0, l(1).t0 + .2);
+      L.forEach((g, i) => g.setAttribute("opacity", Math.min(labOn, P(t, s(0, 1).t0 + .3 + i * .6, .4))));
+      q.setAttribute("opacity", vis(t, .6, l(1).t0 + .2));
+      // 1: Zellwand
+      const w1 = vis(t, l(1).t0, l(1).t1);
+      ribos.forEach(r => r.g.setAttribute("opacity", lerp(1, .3, Math.max(w1, vis(t, l(3).t0, l(4).t0)))));
+      dna.setAttribute("opacity", lerp(1, .3, Math.max(w1, vis(t, l(2).t0, l(3).t0))));
+      pop(b1, t, l(1).t0, 470, 210); b1.setAttribute("opacity", Math.min(+b1.getAttribute("opacity"), 1 - P(t, popAt - .2, .3)));
+      pop(mur, t, s(1, 1).t0 + .5, 960, 140); mur.setAttribute("opacity", Math.min(+mur.getAttribute("opacity"), 1 - P(t, popAt - .2, .3)));
+      wall.setAttribute("stroke-width", 20 + 6 * Math.sin(t * 6) * vis(t, l(1).t0, s(1, 2).t0));
+      const holes = P(t, s(1, 3).t0, 1.2);
+      const seg = 100 / 28, gap = seg * .45 * holes;
+      wall.setAttribute("stroke-dasharray", t < l(1).t1 && holes > 0 ? `${seg - gap} ${gap}` : "100 0");
+      hexes.forEach(h => {
+        const p = P(t, s(1, 2).t0 + .2 + h.k * .15, .8, io);
+        const on = t < l(1).t1 ? p : 0;
+        place(h.g, h.x, h.y + h.n * lerp(150, 26, p), 1, on);
+      });
+      drops.forEach((d, i) => {
+        const st = s(1, 3).t0 + .8 + i * .2, p = ((t - st) % 1.4) / 1.4;
+        const on = t > st && t < popAt - .1 ? Math.sin(clamp(p) * Math.PI) : 0;
+        place(d.g, d.x + 50, d.n * lerp(H / 2 + 90, H / 2 - 70, p), 1, on, d.n > 0 ? 0 : 180);
+      });
+      // 2: Ribosomen
+      const r2 = vis(t, l(2).t0, l(3).t0 + .1);
+      riboRing.setAttribute("opacity", r2 * (.6 + .4 * Math.sin(t * 6)));
+      pop(b2, t, l(2).t0 + .3, 170, 300); b2.setAttribute("opacity", Math.min(+b2.getAttribute("opacity"), 1 - P(t, l(3).t0 - .3, .3)));
+      const ins = vis(t, l(2).t0 + .6, l(4).t0);
+      place(inset, 1340, 450, lerp(.7, 1, P(t, l(2).t0 + .6, .7, back)), ins);
+      const cx = 520 + hiRibo.x * .6, cy = 470 + hiRibo.y * .6;
+      const zx = t < l(3).t0 ? cx : 520 + 40 * .6, zy = t < l(3).t0 ? cy : 470;
+      zoomL.setAttribute("d", `M${zx} ${zy - 8}L1340 ${160}L1340 ${740}L${zx} ${zy + 8}Z`);
+      zoomL.setAttribute("opacity", ins * .08);
+      riboBig.setAttribute("opacity", 1 - P(t, l(3).t0, .4));
+      const block = s(2, 2).t0 + 1.8;
+      const nb = Math.floor(clamp((Math.min(t, block) - l(2).t0 - 1.2) / .45, 0, 12));
+      beads.forEach((b, i) => b.setAttribute("opacity", i < nb ? (t > block ? .5 : 1) : 0));
+      place(tetra, lerp(-320, 0, P(t, s(2, 2).t0 + .6, 1.2, io)), 75, 1, P(t, s(2, 2).t0 + .4, .3));
+      pop(riboX, t, block + .2, 60, -200);
+      insetTitle.textContent = t < l(3).t0 ? "Ribosom = Proteinfabrik" : "DNA = Bauplan";
+      insetTitle.setAttribute("opacity", Math.min(ins, t < l(3).t0 ? 1 - P(t, l(3).t0 - .3, .3) : P(t, l(3).t0, .4)));
+      const cmp = vis(t, s(2, 1).t0 + .3, s(2, 2).t0 + .4);
+      place(c70, 1180, 800, 1, cmp); place(c80, 1500, 800, 1, cmp);
+      pop(noProt, t, block + .5, 1340, 800); noProt.setAttribute("opacity", Math.min(+noProt.getAttribute("opacity"), 1 - P(t, l(3).t0 - .3, .3)));
+      // 3: DNA
+      dnaRing.setAttribute("opacity", vis(t, l(3).t0, l(4).t0) * (.6 + .4 * Math.sin(t * 6)));
+      pop(b3, t, l(3).t0 + .2, 170, 300); b3.setAttribute("opacity", Math.min(+b3.getAttribute("opacity"), 1 - P(t, l(4).t0 - .3, .3)));
+      dnaBig.setAttribute("opacity", P(t, l(3).t0, .4));
+      const stopAt = s(3, 1).t0 + 2.6;
+      dnaCopy.setAttribute("stroke-dasharray", `${lerp(0, .42, clamp((Math.min(t, stopAt) - s(3, 1).t0 - .4) / 2.2))} 1`);
+      pop(dnaX, t, stopAt, 100, 60);
+      pop(gyr, t, stopAt + .3, 1340, 800); gyr.setAttribute("opacity", Math.min(+gyr.getAttribute("opacity"), 1 - P(t, s(3, 2).t0, .3)));
+      pop(noDiv, t, s(3, 2).t0 + .2, 1340, 800);
+      // Vergleich
+      // Zeile 4 hat zwei Sätze; „Bakteriostatisch …“ beginnt nach dem Doppelpunkt, etwa bei 45 % des ersten Satzes
+      const stat = { t0: lerp(s(4, 0).t0, s(4, 0).t1, .45) }, cid = s(4, 1);
+      const s4 = i => [null, stat, cid][i];
+      panels.forEach((p, i) => {
+        const hi = i === 0 ? vis(t, s4(1).t0, s4(2).t0 + .2) : P(t, s4(2).t0, .4);
+        p.g.setAttribute("opacity", lerp(.55, 1, t < s4(1).t0 ? 1 : hi));
+        p.bs.forEach((b, k) => {
+          const wob = Math.sin(t * 3 + k) * 6;
+          if (i === 0) {
+            const frozen = P(t, s4(1).t0 + 1, .5);
+            place(b.g, b.x + wob * (1 - frozen), b.y, 1, P(t, l(4).t0 + .2 + k * .08, .4));
+          } else {
+            const die = P(t, s4(2).t0 + .6 + k * .25, .5);
+            place(b.g, b.x + wob * (1 - die), b.y, 1 + die * .4, Math.min(P(t, l(4).t0 + .2 + k * .08, .4), 1 - die));
+          }
+        });
+      });
+      pop(pause, t, s4(1).t0 + 1, 80 + 420, 140 + 600);
+    };
+  }
+},
+{
+  title: "Resistenzen", dur: 50, lead: 1, tail: .8,
+  lines: [
+    ["C", "Das größte Problem heißt Resistenz. Unter Millionen Bakterien gibt es durch Zufall immer ein paar, denen ein Antibiotikum nichts anhaben kann. Alle anderen sterben, aber die widerstandsfähigen überleben und vermehren sich. Am Ende hilft das Medikament gegen diese Bakterien nicht mehr."],
+    ["C", "Je öfter Antibiotika eingesetzt werden, desto schneller passiert das. Manche Keime, wie der Krankenhauskeim MRSA, sind schon gegen viele Antibiotika gleichzeitig resistent."],
+    ["C", "Fachleute schätzen, dass bis 2050 jedes Jahr etwa zehn Millionen Menschen an resistenten Erregern sterben könnten. Gleichzeitig kommen kaum neue Antibiotika auf den Markt, weil sie für Pharmafirmen wenig Gewinn bringen."]
+  ],
+  build(root, S) {
+    const part1 = G(root);
+    const title = T(part1, 960, 160, "Resistenz", { anchor: "middle", size: 96, weight: 800, font: F.display });
+    const RED = 9, slots = [];
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++) slots.push({ x: 580 + c * 190, y: 290 + r * 120 });
+    const germs = slots.map(() => { const g = G(part1); bact(g, 120, 54); return g; });
+    const reds = slots.map(() => { const g = G(part1); bact(g, 120, 54, "#e98b83", C.red); return g; });
+    const rl = G(part1);
+    E("line", { x1: 0, y1: 0, x2: 70, y2: 0, stroke: C.ink, "stroke-width": 3 }, rl);
+    T(rl, 84, -8, "zufällig", { size: 36, weight: 700 }); T(rl, 84, 32, "widerstandsfähig", { size: 36, weight: 700, fill: C.red });
+    const wave = G(part1);
+    E("rect", { x: -150, y: -280, width: 300, height: 560, rx: 150, fill: C.accent, opacity: .22 }, wave);
+    for (const y of [-180, -60, 60, 180]) { const p = G(wave, { transform: `translate(0 ${y}) rotate(-25)` }); pill(p, 110, 44); }
+    const useless = G(part1); chip(useless, "Antibiotikum wirkt nicht mehr", { size: 36, mark: "x" });
+
+    const part2 = G(root);
+    const ch = G(part2);
+    E("line", { x1: 0, y1: 0, x2: 0, y2: -400, stroke: C.ink, "stroke-width": 5 }, ch);
+    E("line", { x1: 0, y1: 0, x2: 760, y2: 0, stroke: C.ink, "stroke-width": 5 }, ch);
+    T(ch, 380, 60, "Einsatz von Antibiotika →", { anchor: "middle", size: 36, fill: C.muted });
+    T(ch, -30, -200, "Resistenzen →", { anchor: "middle", size: 36, fill: C.muted, }).setAttribute("transform", "rotate(-90 -30 -200)");
+    const curve = E("path", { d: "M20 -30C260 -40 480 -110 740 -370", fill: "none", stroke: C.red, "stroke-width": 12, "stroke-linecap": "round", pathLength: 1 }, ch);
+    const mrsa = G(part2);
+    const hosp = G(mrsa); hospital(hosp, 1.4);
+    T(mrsa, 300, -10, "MRSA", { size: 170, weight: 800, font: F.display, fill: C.red });
+    T(mrsa, 306, 50, "Krankenhauskeim", { size: 40, fill: C.muted });
+    const rx = ["Penicillin", "Methicillin", "Cephalosporine"].map(s => { const g = G(part2); chip(g, s, { size: 34, mark: "x" }); return g; });
+
+    const part3 = G(root);
+    const num = T(part3, 0, 0, "0", { anchor: "middle", size: 190, weight: 800, font: F.display, fill: C.red });
+    const numSub = T(part3, 0, 0, "Tote pro Jahr möglich", { anchor: "middle", size: 48, weight: 700 });
+    const est = G(part3); chip(est, "Schätzung für 2050", { size: 32, font: F.mono, fill: C.muted });
+    const bars = G(part3);
+    const bh = [230, 170, 110, 70, 40];
+    const barEls = bh.map((h, i) => E("rect", { x: i * 80, y: -h, width: 56, height: h, rx: 8, fill: C.accent }, bars));
+    T(bars, 190, 50, "neue Antibiotika", { anchor: "middle", size: 34, weight: 700 });
+    const money = G(part3); chip(money, "wenig Gewinn für Pharmafirmen", { size: 34, mark: "warn" });
+
+    return t => {
+      const l = i => S.l(i), s = (i, j) => S.s(i, j);
+      part1.setAttribute("opacity", vis(t, 0, l(1).t0 + .2));
+      title.setAttribute("opacity", P(t, .3, .5));
+      const waveStart = s(0, 2).t0 + .2, waveDur = 2.6;
+      const wx = lerp(250, 1700, clamp((t - waveStart) / waveDur));
+      place(wave, wx, 470, 1, vis(t, waveStart, waveStart + waveDur + .2, .3, .4));
+      const spreadAt = waveStart + waveDur + .2, spreadDur = Math.max(2, s(0, 2).t1 - spreadAt);
+      slots.forEach((sl, i) => {
+        const appear = Math.min(P(t, .5 + i * .05, .4), 1);
+        const killed = clamp((wx - sl.x + 60) / 140) * (t > waveStart ? 1 : 0);
+        if (i === RED) {
+          const pulse = 1 + .1 * Math.sin((t - s(0, 1).t0) * 6) * vis(t, s(0, 1).t0, s(0, 2).t0);
+          place(germs[i], sl.x, sl.y, 1, appear * (1 - P(t, s(0, 1).t0 + .5, .6)));
+          place(reds[i], sl.x, sl.y, pulse, appear * P(t, s(0, 1).t0 + .5, .6));
+        } else {
+          place(germs[i], sl.x, sl.y, 1, appear * (1 - killed));
+          const order = (i * 7) % 19, at = spreadAt + order / 19 * spreadDur, p = P(t, at, .7, io);
+          const src = slots[RED];
+          place(reds[i], lerp(src.x, sl.x, p), lerp(src.y, sl.y, p), lerp(.4, 1, p), t > at ? 1 : 0);
+        }
+      });
+      place(rl, slots[RED].x + 80, slots[RED].y, 1, vis(t, s(0, 1).t0 + .6, waveStart));
+      pop(useless, t, s(0, 3).t0 + .4, 960, 790);
+      // Teil 2
+      part2.setAttribute("opacity", vis(t, l(1).t0, l(2).t0 + .2));
+      const s10 = s(1, 0), s11 = s(1, 1);
+      place(ch, 600, 700, 1, vis(t, s10.t0, s11.t0 + .2));
+      curve.setAttribute("stroke-dasharray", `${P(t, s10.t0 + .4, 2.6, io)} 1`);
+      place(mrsa, 500, 420, 1, P(t, s11.t0, .5));
+      place(hosp, 0, 0, lerp(.6, 1, P(t, s11.t0, .6, back)));
+      rx.forEach((g, i) => pop(g, t, s11.t0 + 2.4 + i * .6, 560 + i * 400, 720));
+      // Teil 3
+
+      const s20 = s(2, 0), s21 = s(2, 1);
+      const n = Math.round(10000000 * P(t, s20.t0 + 2, 3.5, out) / 1000) * 1000;
+      num.textContent = n.toLocaleString("de-DE");
+      const up = P(t, s21.t0, .8, io);
+      place(part3, 960, 0, 1, vis(t, l(2).t0, 99));
+      num.setAttribute("y", lerp(470, 260, up)); num.setAttribute("font-size", lerp(190, 120, up));
+      numSub.setAttribute("y", lerp(560, 330, up)); numSub.setAttribute("opacity", P(t, s20.t0 + 2.5, .5));
+      place(est, 0, lerp(660, 400, up), 1, P(t, s20.t0 + 3.5, .5));
+      place(bars, -480, 760, 1, P(t, s21.t0 + .6, .5));
+      barEls.forEach((b, i) => { const h = bh[i] * P(t, s21.t0 + .8 + i * .25, .6); b.setAttribute("y", -h); b.setAttribute("height", h); });
+      pop(money, t, s21.t0 + 3.4, 240, 640);
+    };
+  }
+},
+{
+  title: "Nebenwirkungen & Tierhaltung", dur: 60, lead: 1, tail: .8,
+  lines: [
+    ["A", "Antibiotika sind meistens gut verträglich. Aber sie unterscheiden nicht zwischen bösen und guten Bakterien. Deshalb stören sie oft unsere Darmflora, was zu Durchfall führen kann. Manche Menschen reagieren auch allergisch."],
+    ["C", "Ein großer Teil der Antibiotika wird gar nicht an Menschen gegeben, sondern an Tiere. In den USA bekommen Nutztiere etwa viermal so viel Antibiotika wie Menschen. Resistente Keime gelangen dann über Gülle, Wasser und Fleisch zurück zu uns. In der EU ist es deshalb seit 2006 verboten, Tieren Antibiotika nur zum schnelleren Wachsen zu geben."],
+    ["C", "Wie ernst das genommen wird, zeigt ein aktuelles Beispiel: Im September 2026 haben die EU und die Schweiz die Einfuhr von Rindfleisch und Geflügel aus Brasilien gestoppt. Brasilien konnte nicht ausreichend nachweisen, dass es sich an die europäischen Regeln für Antibiotika in der Tierhaltung hält."]
+  ],
+  build(root, S) {
+    /* Darm */
+    const gut = G(root), rnd = rng(5);
+    const top = x => 330 + 40 * Math.sin(x / 260), bot = x => 650 + 40 * Math.sin(x / 260 + 1.2);
+    let d = "M-20 " + top(-20);
+    for (let x = 0; x <= 1940; x += 20) d += "L" + x + " " + top(x).toFixed(1);
+    for (let x = 1940; x >= -20; x -= 20) d += "L" + x + " " + bot(x).toFixed(1);
+    E("path", { d: d + "Z", fill: "#f6dccb", stroke: "#d9a98c", "stroke-width": 8 }, gut);
+    T(gut, 960, 220, "Darmflora", { anchor: "middle", size: 84, weight: 800, font: F.display });
+    const cols = [[C.germ, C.c], ["#a9bdf5", C.a], ["#f3c879", "#a57a0b"], ["#c6e0a0", "#5f8a2a"]];
+    const flora = [];
+    for (let i = 0; i < 200 && flora.length < 46; i++) {
+      const x = 60 + rnd() * 1800, y = lerp(top(x) + 50, bot(x) - 50, rnd());
+      if (flora.some(f => Math.hypot(f.x - x, f.y - y) < 80)) continue;
+      const bad = flora.length % 8 === 3, g = G(gut);
+      const [fill, stroke] = bad ? ["#e98b83", C.red] : cols[flora.length % 4];
+      if (rnd() < .5 && !bad) E("circle", { r: 24, fill, stroke, "stroke-width": 4 }, g); else bact(g, 76, 36, fill, stroke);
+      flora.push({ x, y, g, bad, r: rnd(), ph: rnd() * 6, survive: rnd() < .18 });
+    }
+    const good = flora.find(f => !f.bad && f.x > 500 && f.x < 800), bad = flora.find(f => f.bad && f.x > 1100 && f.x < 1500) || flora.find(f => f.bad);
+    const tagG = G(gut); chip(tagG, "gut", { size: 32, stroke: C.c, fill: C.c });
+    const tagB = G(gut); chip(tagB, "böse", { size: 32, stroke: C.red, fill: C.red });
+    const sweep = G(gut);
+    E("rect", { x: -150, y: -260, width: 300, height: 520, rx: 150, fill: C.accent, opacity: .22 }, sweep);
+    for (const y of [-130, 0, 130]) { const p = G(sweep, { transform: `translate(0 ${y}) rotate(-25)` }); pill(p, 110, 44); }
+    const ok = G(gut); chip(ok, "meistens gut verträglich", { size: 34, mark: "check" });
+    const dia = G(gut); chip(dia, "Durchfall", { size: 36, mark: "warn" });
+    const all = G(gut); chip(all, "Allergie", { size: 36, mark: "warn" });
+
+    /* Tierhaltung */
+    const farm = G(root);
+    const barnG = G(farm); barn(barnG);
+    const barnLab = T(farm, 0, 0, "Nutztiere", { anchor: "middle", size: 44, weight: 700 });
+    const usa = G(farm);
+    T(usa, 0, -150, "USA · Antibiotika pro Jahr", { size: 40, weight: 800, font: F.display });
+    const barT = E("rect", { x: 0, y: -90, width: 0, height: 80, rx: 12, fill: C.accent }, usa);
+    const barM = E("rect", { x: 0, y: 40, width: 0, height: 80, rx: 12, fill: C.a }, usa);
+    const lT = T(usa, 0, -38, "Tiere · 15.000 t", { size: 36, weight: 700 });
+    const lM = T(usa, 0, 92, "Menschen · unter 4.000 t", { size: 36, weight: 700 });
+    const four = T(usa, 860, 200, "≈ 4 ×", { anchor: "end", size: 90, weight: 800, font: F.display, fill: C.accent });
+    const flow = G(farm);
+    const nodes = [["Gülle", p => drop(p, 1), 300], ["Wasser", p => waves(p, 1), 490], ["Fleisch", p => steak(p, 1.1), 680]].map(([lab, ic, y]) => {
+      const g = G(flow);
+      E("circle", { r: 62, fill: C.surface, stroke: C.line, "stroke-width": 4 }, g);
+      ic(g);
+      T(g, 0, 100, lab, { anchor: "middle", size: 34, weight: 700 });
+      return { g, y };
+    });
+    const pers = G(flow); person(pers, 1.3);
+    T(pers, 0, 140, "wir", { anchor: "middle", size: 38, weight: 700 });
+    const paths = nodes.flatMap(n => [`M400 490Q700 ${n.y} 890 ${n.y}`, `M1030 ${n.y}Q1300 ${n.y} 1540 490`]).map(dd => E("path", { d: dd, fill: "none", stroke: C.muted, "stroke-width": 5, "stroke-dasharray": "12 12", pathLength: 1 }, flow));
+    const germsOnPath = paths.map(p => { const g = G(flow); bact(g, 44, 22, "#e98b83", C.red); return { g, p }; });
+    const ban = G(farm);
+    E("rect", { x: -560, y: -60, width: 1120, height: 120, rx: 22, fill: C.cSoft, stroke: C.c, "stroke-width": 5 }, ban);
+    T(ban, 0, -10, "EU · seit 2006 verboten:", { anchor: "middle", baseline: "central", size: 38, weight: 800, font: F.display, fill: C.c });
+    T(ban, 0, 32, "Antibiotika, nur damit Tiere schneller wachsen", { anchor: "middle", baseline: "central", size: 32, fill: C.ink });
+
+    /* Brasilien */
+    const br = G(root);
+    const head = G(br);
+    T(head, 0, 0, "Importstopp ab 3. 9. 2026", { anchor: "middle", size: 76, weight: 800, font: F.display, fill: C.red });
+    const fBR = G(br); flag(fBR, "BR", 140); const lBR = T(br, 460, 755, "Brasilien", { anchor: "middle", size: 44, weight: 700 });
+    const fEU = G(br); flag(fEU, "EU", 130); const lEU = T(br, 1400, 545, "EU", { anchor: "middle", size: 44, weight: 700 });
+    const fCH = G(br); flag(fCH, "CH", 75); const lCH = T(br, 1640, 630, "Schweiz", { anchor: "middle", size: 38, weight: 700 });
+    const arc = E("path", { d: "M590 480Q920 120 1270 330", fill: "none", stroke: C.muted, "stroke-width": 6, "stroke-dasharray": "16 14" }, br);
+    const arcP = s => { const u = 1 - s; return [u * u * 590 + 2 * u * s * 920 + s * s * 1270, u * u * 480 + 2 * u * s * 120 + s * s * 330]; };
+    const goods = [drumstick, steak, drumstick, steak].map(fn => { const g = G(br); E("circle", { r: 44, fill: C.surface, stroke: C.line, "stroke-width": 3 }, g); fn(g, .9); return g; });
+    const stop = G(br); stopSign(stop, 72);
+    const why = G(br); chip(why, "Grund: fehlende Nachweise zum Antibiotika-Einsatz", { size: 34, mark: "warn" });
+
+    return t => {
+      const l = i => S.l(i), s = (i, j) => S.s(i, j);
+      gut.setAttribute("opacity", vis(t, 0, l(1).t0 + .2));
+      const sw0 = s(0, 2).t0 + .3, swD = 2.6, sx = lerp(-200, 2100, clamp((t - sw0) / swD));
+      place(sweep, sx, 490, 1, vis(t, sw0, sw0 + swD + .1, .2, .3));
+      flora.forEach(f => {
+        const gone = f.survive ? 0 : clamp((sx - f.x + 40) / 120) * (t > sw0 ? 1 : 0);
+        place(f.g, f.x + 14 * Math.sin(t * .8 + f.ph), f.y + 6 * Math.cos(t * 1.1 + f.ph), 1, P(t, .3 + f.r * 1.2, .5) * (1 - gone));
+      });
+      const tg = vis(t, s(0, 1).t0 + .3, sw0 + .4);
+      place(tagG, good.x, good.y - 72, 1, tg); place(tagB, bad.x, bad.y - 72, 1, tg);
+      pop(ok, t, s(0, 0).t0 + .6, 960, 790); ok.setAttribute("opacity", Math.min(+ok.getAttribute("opacity"), 1 - P(t, s(0, 1).t0, .4)));
+      pop(dia, t, sw0 + swD - .4, 780, 790);
+      pop(all, t, s(0, 3).t0 + .3, 1150, 790);
+      // Tierhaltung
+      farm.setAttribute("opacity", vis(t, l(1).t0, l(2).t0 + .2));
+      const s1 = i => s(1, i);
+      const side = P(t, s1(1).t0, .8, io), toFlow = P(t, s1(2).t0, .8, io);
+      place(barnG, lerp(lerp(960, 330, side), 290, toFlow), lerp(450, lerp(470, 490, toFlow), side), lerp(1.7, 1, Math.max(side, toFlow)), P(t, l(1).t0 + .1, .5));
+      barnLab.setAttribute("x", lerp(lerp(960, 330, side), 290, toFlow)); barnLab.setAttribute("y", lerp(680, lerp(600, 620, toFlow), Math.max(side, toFlow)));
+      barnLab.setAttribute("opacity", P(t, l(1).t0 + .6, .5));
+      place(usa, 700, 470, 1, vis(t, s1(1).t0 + .4, s1(2).t0 + .2));
+      barT.setAttribute("width", 880 * P(t, s1(1).t0 + .9, 1.2, io)); barM.setAttribute("width", 230 * P(t, s1(1).t0 + 1.6, 1, io));
+      lT.setAttribute("x", 20); lT.setAttribute("fill", C.surface); lM.setAttribute("x", 250);
+      lT.setAttribute("opacity", P(t, s1(1).t0 + 1.8, .4)); lM.setAttribute("opacity", P(t, s1(1).t0 + 2.4, .4));
+      four.setAttribute("opacity", P(t, s1(1).t0 + 3, .4));
+      flow.setAttribute("opacity", P(t, s1(2).t0 + .3, .5));
+      const nodeAt = [s1(2).t0 + 1.6, s1(2).t0 + 2.4, s1(2).t0 + 3.1];
+      nodes.forEach((n, i) => pop(n.g, t, nodeAt[i], 960, n.y));
+      pop(pers, t, s1(2).t0 + 3.8, 1620, 490);
+      paths.forEach((p, i) => p.setAttribute("stroke-dasharray", `${P(t, nodeAt[i >> 1] - .4 + (i % 2) * .6, .8)} 1`));
+      germsOnPath.forEach(({ g, p }, i) => {
+        const st = nodeAt[i >> 1] + (i % 2) * 1.2, u = ((t - st) % 2.4) / 2.4;
+        if (t < st || t > l(2).t0) { g.setAttribute("opacity", 0); return; }
+        const pt = p.getPointAtLength(u * p.getTotalLength());
+        place(g, pt.x, pt.y, 1, Math.sin(u * Math.PI));
+      });
+      place(ban, 960, 145, lerp(1.3, 1, P(t, s1(3).t0 + .6, .5, back)), P(t, s1(3).t0 + .6, .3), -2);
+      // Brasilien
+      br.setAttribute("opacity", vis(t, l(2).t0, 99));
+      const s20 = s(2, 0), s21 = s(2, 1);
+      pop(fBR, t, s20.t0 + .2, 460, 560); lBR.setAttribute("opacity", P(t, s20.t0 + .5, .4));
+      pop(fEU, t, s20.t0 + .8, 1400, 380); lEU.setAttribute("opacity", P(t, s20.t0 + 1.1, .4));
+      pop(fCH, t, s20.t0 + 1.4, 1640, 520); lCH.setAttribute("opacity", P(t, s20.t0 + 1.7, .4));
+      arc.setAttribute("opacity", P(t, s20.t0 + 1.6, .5));
+      const stopAt = s20.t0 + 5.6;
+      goods.forEach((g, i) => {
+        let u = 0, o = 0;
+        if (t < stopAt) {
+          const st = s20.t0 + 2 + i * .75;
+          if (t > st) { u = ((t - st) % 3) / 3; o = Math.min(1, u * 8, (1 - u) * 8) * (1 - P(t, stopAt - .3, .3)); }
+        } else {
+          const st = stopAt + .6 + i * .6;
+          if (t > st) {
+            const ph = ((t - st) % 2.4) / 2.4;
+            u = ph < .5 ? lerp(0, .44, out(ph / .5)) : lerp(.44, .34, (ph - .5) / .5);
+            o = ph < .5 ? Math.min(1, ph * 10) : 1 - (ph - .5) / .5;
+          }
+        }
+        const [x, y] = arcP(u);
+        place(g, x, y, 1, o);
+      });
+      const [sx2, sy2] = arcP(.52);
+      pop(stop, t, stopAt, sx2 + 10, sy2 + 10);
+      pop(head, t, stopAt + .4, 960, 130);
+      pop(why, t, s21.t0 + .5, 960, 840);
+    };
+  }
+},
+{
+  title: "Outro", dur: 15, lead: .5, tail: 4.5, cam: true,
+  lines: [
+    ["A", "Antibiotika retten jeden Tag Leben."],
+    ["B", "Damit das so bleibt, sollten wir sie nur nehmen, wenn ein Arzt sie verschreibt – und dann genau so lange, wie er es sagt."],
+    ["C", "Danke fürs Zuschauen!"]
+  ],
+  build(root, S) {
+    const cam = G(root), setWho = camPlaceholder(cam, "Szene 6 · ihr drei im Bild");
+    const cr = G(root);
+    E("rect", { width: 1920, height: 1080, fill: C.bg }, cr);
+    const dG = G(cr), dish = petri(dG, 120, 7);
+    T(cr, 960, 470, "Antibiotika – Wunderwaffe mit Ablaufdatum?", { anchor: "middle", size: 64, weight: 800, font: F.display });
+    T(cr, 960, 580, "Sprecher: Name A · Name B · Name C", { anchor: "middle", size: 42 });
+    T(cr, 960, 646, "Klasse: …", { anchor: "middle", size: 42 });
+    T(cr, 960, 760, "Quelle: Wikipedia, Artikel „Antibiotikum“", { anchor: "middle", size: 34, fill: C.muted });
+    return t => {
+      setWho(S.whoAt(t));
+      const ct = S.dur - S.tail + .3;
+      cr.setAttribute("opacity", P(t, ct, .7, io));
+      place(dG, 960, 260, 1, 1);
+      dish.update(P(t, ct, 1), P(t, ct + .6, 1, back), P(t, ct + 1, 1.2));
+    };
+  }
+}
+];
+
+/* ------------------------------------------------------------------ Zeitplan */
+const GAP = .5;
+const words = s => s.split(/\s+/).filter(Boolean).length;
+let acc = 0;
+for (const sc of SCENES) {
+  sc.start = acc; acc += sc.dur;
+  const total = sc.lines.reduce((n, [, s]) => n + words(s), 0);
+  const per = (sc.dur - sc.lead - sc.tail - GAP * (sc.lines.length - 1)) / total;
+  let t = sc.lead;
+  sc.L = sc.lines.map(([who, text]) => {
+    const line = { who, text, t0: t, sents: [] };
+    let u = t;
+    for (const s of text.split(/(?<=[.!?])\s+/)) { const d = words(s) * per; line.sents.push({ text: s, t0: u, t1: u + d }); u += d; }
+    line.t1 = u; t = u + GAP;
+    return line;
+  });
+  sc.l = i => sc.L[i];
+  sc.s = (i, j) => sc.L[i].sents[j];
+  sc.whoAt = t => { for (const ln of sc.L) if (t >= ln.t0 - .2 && t < ln.t1 + GAP) return ln.who; return ""; };
+  sc.sentAt = t => {
+    let best = null;
+    for (const ln of sc.L) for (const s of ln.sents) if (t >= s.t0) best = [ln.who, s.text, s.t1];
+    return best && t < best[2] + GAP * .8 ? best : null;
+  };
+}
+const DURATION = acc;
+
+/* ------------------------------------------------------------------ Darstellung */
+const sub = document.getElementById("sub"), subWho = sub.querySelector(".who"), subTxt = sub.querySelector(".txt");
+const hudR = document.getElementById("hud-r");
+const params = new URLSearchParams(location.search);
+let built = false;
+function build() {
+  for (const sc of SCENES) { sc.root = G(svg); sc.update = sc.build(sc.root, sc); }
+  for (const sc of SCENES) sc.root.style.display = "none";
+  built = true;
+}
+function renderAt(T0) {
+  const t = clamp(T0, 0, DURATION - 1e-3);
+  let cur = SCENES[0];
+  for (const sc of SCENES) { const on = t >= sc.start && t < sc.start + sc.dur; sc.root.style.display = on ? "" : "none"; if (on) cur = sc; }
+  const lt = t - cur.start;
+  cur.update(lt);
+  cur.root.setAttribute("opacity", cur.cam && lt > 1 ? 1 : Math.min(P(lt, 0, .3, io), 1 - P(lt, cur.dur - .3, .3, io)));
+  const s = params.get("sub") === "0" ? null : cur.sentAt(lt);
+  sub.classList.toggle("off", !s);
+  if (s) {
+    const [col, soft] = WHO[s[0]];
+    subWho.textContent = s[0]; subWho.style.background = soft; subWho.style.color = col;
+    subTxt.textContent = s[1];
+  }
+  hudR.textContent = `Szene ${SCENES.indexOf(cur) + 1} · ${cur.title} · ${fmtTime(t)}`;
+}
+window.DURATION = DURATION;
+window.renderAt = renderAt;
+window.ready = document.fonts.ready.then(() => document.fonts.load('800 40px "Bricolage Grotesque"')).then(() => { build(); renderAt(0); return DURATION; });
+
+/* Abspielen im Browser */
+if (params.has("render")) {
+  document.body.classList.add("render");
+  if (params.get("hud") === "0") document.body.classList.add("nohud");
+} else {
+  const stage = document.getElementById("stage"), seek = document.getElementById("seek"), btn = document.getElementById("play"), tm = document.getElementById("time");
+  let playing = false, t = +(params.get("t") || 0), last = 0;
+  function fit() {
+    const s = Math.min(innerWidth / 1920, (innerHeight - 56) / 1080);
+    stage.style.transform = `translate(${(innerWidth - 1920 * s) / 2}px, ${(innerHeight - 56 - 1080 * s) / 2}px) scale(${s})`;
+  }
+  addEventListener("resize", fit); fit();
+  function show() { renderAt(t); seek.value = t; tm.textContent = fmtTime(t) + " / " + fmtTime(DURATION); }
+  function loop(now) {
+    if (!playing) return;
+    t += (now - last) / 1000; last = now;
+    if (t >= DURATION) { t = DURATION; playing = false; btn.textContent = "▶ Abspielen"; }
+    show(); requestAnimationFrame(loop);
+  }
+  function toggle() {
+    playing = !playing; btn.textContent = playing ? "❚❚ Pause" : "▶ Abspielen";
+    if (playing) { if (t >= DURATION) t = 0; last = performance.now(); requestAnimationFrame(loop); }
+  }
+  btn.addEventListener("click", toggle);
+  addEventListener("keydown", e => { if (e.code === "Space") { e.preventDefault(); toggle(); } });
+  seek.addEventListener("input", () => { t = +seek.value; show(); });
+  window.ready.then(() => { seek.max = DURATION; show(); });
+}
+</script>
+</body>
+</html>
