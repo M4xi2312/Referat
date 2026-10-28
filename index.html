@@ -172,6 +172,8 @@
   body.focus-A .row:not(.A), body.focus-B .row:not(.B), body.focus-C .row:not(.C) { opacity: .28; }
 
   /* Überblick */
+  .film { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 14px; border: 1px solid var(--line); }
+  .film-note { margin: 8px 0 0; font-size: .85rem; color: var(--muted); }
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
   .table-scroll { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: .92rem; }
@@ -278,6 +280,12 @@
       </div>
     </div>
   </div>
+
+  <section class="block" id="video">
+    <div class="block-head"><h2>Das fertige Video</h2></div>
+    <video class="film" controls playsinline preload="metadata" src="video/antibiotika_video.mp4#t=2"></video>
+    <p class="film-note">4:30 Minuten · <a href="video/antibiotika_video.mp4" download>Video herunterladen</a></p>
+  </section>
 
   <section class="block" id="ueberblick">
     <div class="block-head"><h2>Überblick</h2></div>
