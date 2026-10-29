@@ -5,7 +5,6 @@ mit Wortzeiten ({"duration", "words": [{"w", "s", "e"}]}). Daraus werden Szenenl
 und Satzzeiten berechnet, damit die Animationen zum gesprochenen Text passen.
 timing.js wird von animation.html (Bildzeiten) und assemble.py (Ton und Kamera) gelesen.
 """
-import html
 import json
 import re
 import subprocess
@@ -33,12 +32,9 @@ CREDITS = [" · ".join(NAMES), "Quelle: Wikipedia, Artikel „Antibiotikum“"]
 
 
 def script_lines():
-    """Die Sprecherzeilen pro Szene aus index.html (Drehbuch)."""
-    src = (HERE.parent / "index.html").read_text(encoding="utf-8")
-    scenes = []
-    for sec in re.findall(r'<section class="block" id="s\d">(.*?)</section>', src, re.S):
-        scenes.append([html.unescape(t) for t in re.findall(r'<div class="row [ABC]"><span class="who">[ABC]</span><p>(.*?)</p>', sec)])
-    return scenes
+    """Die Sprecherzeilen pro Szene, wie sie in animation.html stehen (1:1 aus dem Drehbuch)."""
+    src = (HERE / "animation.html").read_text(encoding="utf-8")
+    return [re.findall(r'\["[ABC]", "(.*?)"\]', block) for block in re.findall(r"  lines: \[\n(.*?)\n  \],", src, re.S)]
 
 
 def sentences(text):
